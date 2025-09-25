@@ -1,13 +1,13 @@
 from typing import cast
+from datetime import datetime, timedelta
 from langgraph.graph import StateGraph, START, END
-from sqlalchemy.sql.functions import user
 
 from src.pubmed_email_agent.agent.state import Summary
 from src.pubmed_email_agent.agent.state import AgentState
 
 from src.pubmed_email_agent.tools.llm.client import LLMTools
-from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
 from src.pubmed_email_agent.tools.user.client import UserTools
+from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
 
 
 class Agent:
@@ -63,9 +63,15 @@ class Agent:
         print("Generating search request")
 
         profile = state["user_profile"]
+        if profile.last_email_date is None:
+            search_date = datetime.now().date() - timedelta(days=7)
+        else:
+            search_date = profile.last_email_date + timedelta(days=1)
+
+        search_from_date_str = search_date.strftime("%Y/%m/%d")
 
         search_req = self.llm_tools.generate_search_query(
-            profile.conditions, state["search_from_date"]
+            profile.conditions, search_from_date_str
         )
 
         return {"search_request": search_req}
@@ -124,7 +130,7 @@ class Agent:
 
         return {"email_content": email_content}
 
-    def _send_email(self, state: AgentState) -> dict:
+    async def _send_email(self, state: AgentState) -> dict:
         print("Sending email")
 
         user_profile = state["user_profile"]
@@ -136,6 +142,11 @@ class Agent:
 
         if success:
             print(f"Email sent to {user_profile.id}")
+            update_success = await self.user_tools.update_last_email_date(
+                user_profile.id
+            )
+            if not update_success:
+                print(f"Failed to update last email date for user {user_profile.id}")
         else:
             print(f"Failed to send email to {user_profile.id}")
 

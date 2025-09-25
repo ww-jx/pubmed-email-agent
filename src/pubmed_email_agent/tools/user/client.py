@@ -1,11 +1,12 @@
 from typing import List, Optional
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy import text
+import markdown2
+from datetime import date
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
-import markdown2
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 
 @dataclass
@@ -18,6 +19,7 @@ class UserProfile:
     city: str
     gender: str
     conditions: List[str]
+    last_email_date: date | None
 
 
 class UserTools:
@@ -62,7 +64,8 @@ class UserTools:
                 country, 
                 city, 
                 gender, 
-                conditions
+                conditions,
+                last_email_date
             FROM {self.user_table} 
             WHERE id = :user_id
         """)
@@ -95,4 +98,20 @@ class UserTools:
             return True
         except Exception as e:
             print(f"Error sending email to {to_email}: {e}")
+            return False
+
+    async def update_last_email_date(self, user_id: str) -> bool:
+        query = text(f"""
+            UPDATE {self.user_table}
+            SET last_email_date = NOW()
+            WHERE id = :user_id
+        """)
+
+        try:
+            async with AsyncSession(self.engine) as session:
+                await session.execute(query, {"user_id": user_id})
+                await session.commit()
+            return True
+        except Exception as e:
+            print(f"Error updating last_email_date for user {user_id}: {e}")
             return False
