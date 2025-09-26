@@ -6,6 +6,7 @@ from datetime import date
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from sqlalchemy import text
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 
@@ -30,7 +31,7 @@ class UserTools:
         email_api_key: str,
         from_email: str,
     ):
-        self.engine = create_async_engine(db_connection_string)
+        self.engine = create_async_engine(db_connection_string, poolclass=NullPool)
         self.user_table = user_table
 
         self.email_client = SendGridAPIClient(email_api_key)
