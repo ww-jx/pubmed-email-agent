@@ -12,11 +12,19 @@ from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
 
 class Agent:
     def __init__(
-        self, user_tools: UserTools, llm_tools: LLMTools, pubmed_tools: PubmedTools
+        self,
+        user_tools: UserTools,
+        llm_tools: LLMTools,
+        pubmed_tools: PubmedTools,
+        article_count: int = 5,
+        max_retries: int = 3,
     ):
         self.user_tools = user_tools
         self.llm_tools = llm_tools
         self.pubmed_tools = pubmed_tools
+
+        self.article_count = article_count
+        self.max_retries = max_retries
 
         self.app = self._build_graph()
 
@@ -41,6 +49,15 @@ class Agent:
         workflow.add_edge(START, "get_user_profile")
         workflow.add_edge("get_user_profile", "generate_search_request")
         workflow.add_edge("generate_search_request", "search_for_articles")
+
+        workflow.add_conditional_edges(
+            "search_for_articles",
+            self._query_check,
+            {
+                "retry": "search_for_articles",
+                "end": "fetch_article_details",
+            },
+        )
         workflow.add_edge("search_for_articles", "fetch_article_details")
         workflow.add_edge("fetch_article_details", "summarize_articles")
         workflow.add_edge("summarize_articles", "format_email")
@@ -48,6 +65,27 @@ class Agent:
         workflow.add_edge("send_email", END)
 
         return workflow.compile()
+
+    def _article_check(self, state: AgentState) -> str:
+        """
+        Check if retrieved articles are sufficient
+        """
+
+        retries = state.get("retries", 0)
+
+        if len(state["article_ids"]) == self.article_count:
+            print("check passed: sufficient articles found")
+            return "end"
+
+        if retries < self.max_retries:
+            print("check failed: insufficient articles, retrying")
+            retries += 1
+            return "retry"
+
+        print(
+            "check failed: maximum retries reached, proceeding with available articles"
+        )
+        return "end"
 
     async def _get_user_profile(self, state: AgentState) -> dict:
         print(f"Fetching profile for user: {state['user_id']}")
@@ -97,7 +135,9 @@ class Agent:
 
         summaries = []
 
-        articles = state["fetched_articles"]
+        articles_data = state["fetched_articles"]
+
+        articles = [articles_data] if isinstance(articles_data, dict) else articles_data
 
         for article in articles:
             pmid = article.get("MedlineCitation", {}).get("PMID", "").get("#text", "")

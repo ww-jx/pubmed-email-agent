@@ -6,7 +6,7 @@ GENERATE_QUERY_USER = """
 Generate the search parameters based on the following details: \n
 - Interests: {interests}\n
 - Only retrieve results published after {date}\n
-- The query should only return at most {article_count} articles
+- The query must return {article_count} articles
 """
 
 SUMMARIZE_ARTICLE_SYS = """

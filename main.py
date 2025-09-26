@@ -21,7 +21,7 @@ async def main():
     llm_tools = LLMTools(llm)
     pubmed_tools = PubmedTools(PUBMED_TOOL_NAME, PUBMED_EMAIL)
 
-    agent = Agent(user_tools, llm_tools, pubmed_tools)
+    agent = Agent(user_tools, llm_tools, pubmed_tools, article_count=5, max_retries=3)
 
     user_ids = await user_tools.get_all_user_ids()
 

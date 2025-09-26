@@ -20,3 +20,4 @@ class AgentState(TypedDict):
     fetched_articles: List[dict]
     summaries: List[Summary]
     email_content: str
+    retries: int
