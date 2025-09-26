@@ -52,13 +52,12 @@ class Agent:
 
         workflow.add_conditional_edges(
             "search_for_articles",
-            self._query_check,
+            self._article_check,
             {
-                "retry": "search_for_articles",
+                "retry": "generate_search_request",
                 "end": "fetch_article_details",
             },
         )
-        workflow.add_edge("search_for_articles", "fetch_article_details")
         workflow.add_edge("fetch_article_details", "summarize_articles")
         workflow.add_edge("summarize_articles", "format_email")
         workflow.add_edge("format_email", "send_email")
@@ -109,8 +108,11 @@ class Agent:
         search_from_date_str = search_date.strftime("%Y/%m/%d")
 
         search_req = self.llm_tools.generate_search_query(
-            profile.conditions, search_from_date_str
+            profile.conditions, search_from_date_str, self.article_count
         )
+
+        search_req.retmax = self.article_count
+        search_req.sort = "pub_date"
 
         return {"search_request": search_req}
 

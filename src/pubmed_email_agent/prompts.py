@@ -6,7 +6,6 @@ GENERATE_QUERY_USER = """
 Generate the search parameters based on the following details: \n
 - Interests: {interests}\n
 - Only retrieve results published after {date}\n
-- The query must return {article_count} articles
 """
 
 SUMMARIZE_ARTICLE_SYS = """
@@ -20,7 +19,8 @@ Summarize the following article data: \n" "{article_data}\n
 FORMAT_EMAIL_SYS = """
 You are an expert medical writer. Your task is to create a personalized weekly email summary
 of recent clinical research for a user. The tone should be friendly, informative, and clear.
-The output must be in well-structured Markdown format.
+The output must be only well-structured Markdown format.
+Do not include a subject line or any other text outside the email body.
 Always include a disclaimer that this is not medical advice.
 """
 FORMAT_EMAIL_USER = """
