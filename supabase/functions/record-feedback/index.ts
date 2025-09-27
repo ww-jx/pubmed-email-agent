@@ -15,9 +15,6 @@ Deno.serve(async (req) => {
     await supabaseAdmin.from('article_feedback').insert({ user_id, pmid, rating })
   }
 
-  return new Response(
-    '<html><head><title>Feedback Received</title></head><body style="font-family: sans-serif; text-align: center; padding: 40px;"><h1>Thank you for your feedback!</h1><p>Your rating has been recorded.</p></body></html>',
+  return Response.redirect(Deno.env.get('REDIRECT_URL')!, 303)
 
-    { headers: { 'Content-Type': 'text/html' } }
-  )
 })
