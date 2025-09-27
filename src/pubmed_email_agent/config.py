@@ -11,6 +11,8 @@ DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 DB_TABLE = os.getenv("DB_TABLE", "")
 
+FEEDBACK_BASE_URL = os.getenv("FEEDBACK_BASE_URL", "")
+
 LLM_API_KEY = os.getenv("OPENROUTER_API_KEY")
 LLM_API_BASE = os.getenv("OPENROUTER_BASE_URL")
 LLM_MODEL = os.getenv("OPENROUTER_MODEL")

@@ -9,6 +9,7 @@ class Summary(TypedDict):
     title: str
     link: str
     summary: str
+    rating_links_html: str
 
 
 class AgentState(TypedDict):

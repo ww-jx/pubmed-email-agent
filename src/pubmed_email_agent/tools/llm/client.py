@@ -18,8 +18,9 @@ from src.pubmed_email_agent.prompts import (
 
 
 class LLMTools:
-    def __init__(self, llm: BaseChatModel):
+    def __init__(self, llm: BaseChatModel, feedback_base_url: str):
         self.llm = llm
+        self.feedback_base_url = feedback_base_url
 
         self.search_llm = self.llm.with_structured_output(ESearchRequest)
 
@@ -74,6 +75,11 @@ class LLMTools:
         Formats the email content based on the summary
         """
 
+        for summary in summaries:
+            summary["rating_links_html"] = self._create_rating_links(
+                user_profile.id, summary["pmid"]
+            )
+
         prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", FORMAT_EMAIL_SYS),
@@ -92,3 +98,17 @@ class LLMTools:
         )
 
         return response.text()
+
+    def _create_rating_links(self, user_id: str, article_id: str) -> str:
+        """
+        Create HTML rating links
+        """
+        links = []
+        for i in range(1, 6):
+            url = f"{self.feedback_base_url}?user_id={user_id}&pmid={article_id}&rating={i}"
+            links.append(
+                f'<a href="{url}" style="text-decoration: none; margin: 0 5px; font-size: 1.2em; color: #007bff;">{i}</a>'
+            )
+
+        html_string = " ".join(links)
+        return f"<b>How relevant was this?</b><br>{html_string}<br><small>(1=Not Relevant, 5=Very Relevant)</small>"
