@@ -14,6 +14,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      REDIRECT_URL: ${{ secrets.REDIRECT_URL }}
 
     steps:
       - name: Checkout Code
@@ -23,6 +24,9 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+
+      - name: Function Secrets
+        run: supabase secrets set --project-ref $SUPABASE_PROJECT_REF REDIRECT_URL=$REDIRECT_URL 
 
       - name: Deploy 'record-feedback' Function
         run: supabase functions deploy record-feedback --project-ref $SUPABASE_PROJECT_REF --no-verify-jwt
