@@ -9,9 +9,10 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
-DB_TABLE = os.getenv("DB_TABLE", "")
+USER_TABLE = os.getenv("USER_TABLE", "")
 
 FEEDBACK_BASE_URL = os.getenv("FEEDBACK_BASE_URL", "")
+UNSUBSCRIBE_BASE_URL = os.getenv("UNSUBSCRIBE_BASE_URL", "")
 
 LLM_API_KEY = os.getenv("OPENROUTER_API_KEY")
 LLM_API_BASE = os.getenv("OPENROUTER_BASE_URL")

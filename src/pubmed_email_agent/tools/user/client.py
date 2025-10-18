@@ -21,6 +21,7 @@ class UserProfile:
     gender: str
     conditions: List[str]
     last_email_date: date | None
+    subscribed: bool
 
 
 class UserTools:
@@ -66,7 +67,8 @@ class UserTools:
                 city, 
                 gender, 
                 conditions,
-                last_email_date
+                last_email_date,
+                subscribed
             FROM {self.user_table} 
             WHERE id = :user_id
         """)

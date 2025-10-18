@@ -18,9 +18,12 @@ from src.pubmed_email_agent.prompts import (
 
 
 class LLMTools:
-    def __init__(self, llm: BaseChatModel, feedback_base_url: str):
+    def __init__(
+        self, llm: BaseChatModel, feedback_base_url: str, unsubscribe_base_url: str
+    ):
         self.llm = llm
         self.feedback_base_url = feedback_base_url
+        self.unsubscribe_base_url = unsubscribe_base_url
 
         self.search_llm = self.llm.with_structured_output(ESearchRequest)
 
@@ -94,6 +97,7 @@ class LLMTools:
                 "first_name": user_profile.first_name,
                 "user_profile": str(user_profile),
                 "summaries_json": json.dumps([dict(s) for s in summaries], indent=2),
+                "unsubscribe_link": self._create_unsubscribe_link(user_profile.id),
             }
         )
 
@@ -112,3 +116,10 @@ class LLMTools:
 
         html_string = " ".join(links)
         return f"<b>How relevant was this?</b><br>{html_string}<br><small>(1=Not Relevant, 5=Very Relevant)</small>"
+
+    def _create_unsubscribe_link(self, user_id: str) -> str:
+        """
+        Create unsubscribe link
+        """
+        url = f"{self.unsubscribe_base_url}?user_id={user_id}"
+        return f'<a href="{url}">Unsubscribe</a>'

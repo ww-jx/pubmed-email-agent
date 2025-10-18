@@ -47,7 +47,14 @@ class Agent:
 
         # add edges
         workflow.add_edge(START, "get_user_profile")
-        workflow.add_edge("get_user_profile", "generate_search_request")
+        workflow.add_conditional_edges(
+            "get_user_profile",
+            self._subscription_check,
+            {
+                "continue": "generate_search_request",
+                "end": END,
+            },
+        )
         workflow.add_edge("generate_search_request", "search_for_articles")
 
         workflow.add_conditional_edges(
@@ -64,6 +71,13 @@ class Agent:
         workflow.add_edge("send_email", END)
 
         return workflow.compile()
+
+    def _subscription_check(self, state: AgentState) -> str:
+        if state["user_profile"].subscribed:
+            print("User is subscribed, proceeding.")
+            return "continue"
+
+        return "end"
 
     def _article_check(self, state: AgentState) -> str:
         """
