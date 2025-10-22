@@ -10,6 +10,7 @@ DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 USER_TABLE = os.getenv("USER_TABLE", "")
+FEEDBACK_TABLE = os.getenv("FEEDBACK_TABLE", "")
 
 FEEDBACK_BASE_URL = os.getenv("FEEDBACK_BASE_URL", "")
 UNSUBSCRIBE_BASE_URL = os.getenv("UNSUBSCRIBE_BASE_URL", "")

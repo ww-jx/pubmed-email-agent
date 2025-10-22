@@ -11,6 +11,15 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 
 @dataclass
+class UserFeedback:
+    id: int
+    created_at: date
+    user_id: str
+    pmid: str
+    rating: int
+
+
+@dataclass
 class UserProfile:
     id: str
     email: str
@@ -22,6 +31,7 @@ class UserProfile:
     conditions: List[str]
     last_email_date: date | None
     subscribed: bool
+    feedback: Optional[List[UserFeedback]] = None
 
 
 class UserTools:
@@ -29,11 +39,13 @@ class UserTools:
         self,
         db_connection_string: str,
         user_table: str,
+        feedback_table: str,
         email_api_key: str,
         from_email: str,
     ):
         self.engine = create_async_engine(db_connection_string, poolclass=NullPool)
         self.user_table = user_table
+        self.feedback_table = feedback_table
 
         self.email_client = SendGridAPIClient(email_api_key)
         self.from_email = from_email
@@ -118,3 +130,26 @@ class UserTools:
         except Exception as e:
             print(f"Error updating last_email_date for user {user_id}: {e}")
             return False
+
+    async def get_user_feedback(self, user_id: str) -> List[UserFeedback]:
+        """
+        Retrieves feedback for a specific user.
+        """
+
+        query = text(f"""
+            SELECT 
+                id, 
+                created_at, 
+                user_id, 
+                pmid, 
+                rating
+            FROM {self.feedback_table}
+            WHERE user_id = :user_id
+            ORDER BY created_at DESC
+        """)
+
+        async with AsyncSession(self.engine) as session:
+            result = await session.execute(query, {"user_id": user_id})
+            feedback_entries = [UserFeedback(**row) for row in result.mappings().all()]
+
+        return feedback_entries

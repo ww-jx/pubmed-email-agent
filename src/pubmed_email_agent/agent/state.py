@@ -18,6 +18,8 @@ class AgentState(TypedDict):
     search_from_date: str
     search_request: ESearchRequest
     article_ids: List[str]
+    related_article_ids: List[str]
+    negative_keywords: List[str]
     fetched_articles: List[dict]
     summaries: List[Summary]
     email_content: str

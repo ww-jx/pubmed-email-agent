@@ -7,6 +7,7 @@ from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
 
 from src.pubmed_email_agent.config import (
     USER_TABLE,
+    FEEDBACK_TABLE,
     FEEDBACK_BASE_URL,
     UNSUBSCRIBE_BASE_URL,
     EMAIL_API_KEY,
@@ -19,7 +20,9 @@ from src.pubmed_email_agent.config import (
 
 
 async def main():
-    user_tools = UserTools(db_connection_string, USER_TABLE, EMAIL_API_KEY, FROM_EMAIL)
+    user_tools = UserTools(
+        db_connection_string, USER_TABLE, FEEDBACK_TABLE, EMAIL_API_KEY, FROM_EMAIL
+    )
     llm_tools = LLMTools(llm, FEEDBACK_BASE_URL, UNSUBSCRIBE_BASE_URL)
     pubmed_tools = PubmedTools(PUBMED_TOOL_NAME, PUBMED_EMAIL)
 

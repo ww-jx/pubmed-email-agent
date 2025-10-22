@@ -2,11 +2,19 @@ GENERATE_QUERY_SYS = """
 You are an expert assistant that helps to generate PubMed search queries for a patient audience.
 Based on the user's interests and preferences, generate the search parameters.
 Articles do not have to be about all conditions, but should be relevant to at least one.
+Strive for a variety of articles covering the different interests listed.
 """
 GENERATE_QUERY_USER = """
 Generate the search parameters based on the following details: \n
 - Interests: {interests}\n
+- Keywords to avoid: {negative_keywords}\n
 - Only retrieve results published after {date}\n
+
+**Instructions:**
+1.  Construct a PubMed search query string that covers the user's `Interests`. Aim for recent articles published after the specified `date`.
+2.  **Use the `Keywords to Avoid` as guidance.** Where possible, try to exclude articles heavily focused on these specific terms by adding relevant `NOT` clauses (e.g., `AND NOT "term"[MeSH Terms]`).
+3.  **Prioritize Variety:** Do **not** let the `Keywords to Avoid` completely block results related to one of the user's core `Interests`. If avoiding a keyword significantly narrows the results for an interest area, it's okay to include some articles related to that keyword to ensure the user still gets updates across all their stated interests. The goal is a balanced mix.
+4.  Ensure the query structure is valid for PubMed.
 """
 
 SUMMARIZE_ARTICLE_SYS = """

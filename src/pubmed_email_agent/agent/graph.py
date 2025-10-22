@@ -37,7 +37,8 @@ class Agent:
         workflow = StateGraph(AgentState)
 
         # add nodes
-        workflow.add_node("get_user_profile", self._get_user_profile)
+        workflow.add_node("get_user_profile", self._get_user_data)
+        workflow.add_node("process_feedback", self._process_feedback)
         workflow.add_node("generate_search_request", self._generate_search_request)
         workflow.add_node("search_for_articles", self._search_for_articles)
         workflow.add_node("fetch_article_details", self._fetch_article_details)
@@ -51,10 +52,11 @@ class Agent:
             "get_user_profile",
             self._subscription_check,
             {
-                "continue": "generate_search_request",
+                "continue": "process_feedback",
                 "end": END,
             },
         )
+        workflow.add_edge("process_feedback", "generate_search_request")
         workflow.add_edge("generate_search_request", "search_for_articles")
 
         workflow.add_conditional_edges(
@@ -62,7 +64,8 @@ class Agent:
             self._article_check,
             {
                 "retry": "generate_search_request",
-                "end": "fetch_article_details",
+                "proceed": "fetch_article_details",
+                "end": END,
             },
         )
         workflow.add_edge("fetch_article_details", "summarize_articles")
@@ -86,21 +89,26 @@ class Agent:
 
         retries = state.get("retries", 0)
 
-        if len(state["article_ids"]) == self.article_count:
+        if len(state["article_ids"]) >= self.article_count - len(
+            state["related_article_ids"]
+        ):
             print("check passed: sufficient articles found")
-            return "end"
+            return "proceed"
 
         if retries < self.max_retries:
             print("check failed: insufficient articles, retrying")
-            retries += 1
             return "retry"
+
+        if retries >= self.max_retries and len(state["article_ids"]) == 0:
+            print("No articles found after maximum retries, ending process")
+            return "end"
 
         print(
             "check failed: maximum retries reached, proceeding with available articles"
         )
-        return "end"
+        return "proceed"
 
-    async def _get_user_profile(self, state: AgentState) -> dict:
+    async def _get_user_data(self, state: AgentState) -> dict:
         print(f"Fetching profile for user: {state['user_id']}")
 
         profile = await self.user_tools.get_user_profile(state["user_id"])
@@ -108,7 +116,37 @@ class Agent:
         if not profile:
             raise ValueError(f"No profile found for user ID: {state['user_id']}")
 
+        # store user feedback
+        user_feedback = await self.user_tools.get_user_feedback(state["user_id"])
+
+        profile.feedback = user_feedback
+
         return {"user_profile": profile}
+
+    async def _process_feedback(self, state: AgentState) -> dict:
+        print("Processing user feedback")
+
+        profile = state["user_profile"]
+        feedback = profile.feedback
+
+        if not feedback:
+            print("No feedback to process")
+            return {}
+
+        positive_pmids = [article.pmid for article in feedback if article.rating >= 4]
+
+        negative_pmids = [article.pmid for article in feedback if article.rating <= 2]
+
+        # get related articles for positive feedback
+        positive_articles = await self.pubmed_tools.get_related_articles(positive_pmids)
+
+        # get negative keywords to avoid
+        negative_keywords = await self.pubmed_tools.get_article_keywords(negative_pmids)
+
+        return {
+            "related_article_ids": positive_articles,
+            "negative_keywords": negative_keywords,
+        }
 
     def _generate_search_request(self, state: AgentState) -> dict:
         print("Generating search request")
@@ -122,10 +160,13 @@ class Agent:
         search_from_date_str = search_date.strftime("%Y/%m/%d")
 
         search_req = self.llm_tools.generate_search_query(
-            profile.conditions, search_from_date_str, self.article_count
+            profile.conditions,
+            state["negative_keywords"],
+            search_from_date_str,
+            max(0, self.article_count - len(state["related_article_ids"])),
         )
 
-        search_req.retmax = self.article_count
+        search_req.retmax = self.article_count - len(state["related_article_ids"])
         search_req.sort = "pub_date"
 
         return {"search_request": search_req}
@@ -137,12 +178,18 @@ class Agent:
 
         print(f"Found {len(ids)} articles.")
 
-        return {"article_ids": ids}
+        retries = state.get("retries", 0)
+        if len(ids) != self.article_count - len(state["related_article_ids"]):
+            retries += 1
+
+        return {"article_ids": ids, "retries": retries}
 
     async def _fetch_article_details(self, state: AgentState) -> dict:
         print("Fetching article details")
 
-        articles = await self.pubmed_tools.fetch(state["article_ids"])
+        articles = await self.pubmed_tools.fetch(
+            state["article_ids"] + state["related_article_ids"]
+        )
 
         return {"fetched_articles": articles}
 

@@ -28,7 +28,11 @@ class LLMTools:
         self.search_llm = self.llm.with_structured_output(ESearchRequest)
 
     def generate_search_query(
-        self, interests: list[str], search_from_date: str, article_count: int = 5
+        self,
+        interests: list[str],
+        negative_keywords: list[str],
+        search_from_date: str,
+        article_count: int = 5,
     ) -> ESearchRequest:
         """
         Generates PubMed search parameters
@@ -46,6 +50,7 @@ class LLMTools:
         response = chain.invoke(
             {
                 "interests": ", ".join(interests),
+                "negative_keywords": negative_keywords,
                 "date": search_from_date,
                 "article_count": article_count,
             }
@@ -71,7 +76,7 @@ class LLMTools:
 
         response = chain.invoke({"article_data": article_data})
 
-        return response.text()
+        return response.text
 
     def format_email(self, user_profile: UserProfile, summaries: List[Summary]) -> str:
         """

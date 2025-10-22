@@ -1,11 +1,20 @@
-from typing import AsyncIterator
+from typing import AsyncIterator, Dict, List, Optional
 
+import json
 import httpx
+import random
 import xmltodict
 from contextlib import asynccontextmanager
 
-from pubmedclient.sdk import esearch, efetch
-from pubmedclient.models import ESearchRequest, EFetchRequest, Db
+from pubmedclient.sdk import esearch, efetch, elink
+from pubmedclient.models import (
+    ESearchRequest,
+    EFetchRequest,
+    Db,
+    ELinkRequest,
+    ELinkCmd,
+    RetMode,
+)
 
 
 class PubmedTools:
@@ -44,7 +53,146 @@ class PubmedTools:
 
             parsed_response = xmltodict.parse(response)
 
-            return parsed_response.get("PubmedArticleSet", {}).get("PubmedArticle", [])
+            article_data = parsed_response.get("PubmedArticleSet", {}).get(
+                "PubmedArticle", []
+            )
+
+            if not article_data:
+                return []
+
+            if isinstance(article_data, dict):
+                return [article_data]
+
+            if isinstance(article_data, list):
+                return article_data
+
+            return []
+
+    async def get_related_articles(
+        self, pmids: List[str], article_count: int = 2
+    ) -> List[str]:
+        """
+        Given a list of PMIDs, retrieves the single most related article PMID for each.
+
+        Returns a dictionary mapping each input PMID to its single most related article PMID
+        (or None if none found).
+        """
+        if not pmids:
+            return {}
+
+        params = ELinkRequest(
+            dbfrom=Db.PUBMED,
+            db=Db.PUBMED,
+            id=pmids,
+            cmd=ELinkCmd.NEIGHBOR_SCORE,
+            retmode=RetMode.JSON,
+        )
+
+        most_related = []
+
+        async with self._create_http_client() as client:
+            try:
+                response = await elink(client, params)
+                data = json.loads(response)
+            except (
+                httpx.RequestError,
+                httpx.HTTPStatusError,
+                json.JSONDecodeError,
+            ) as e:
+                print(f"Error fetching related articles: {e}")
+                return most_related
+
+        try:
+            linksets = data.get("linksets", [])
+
+            # a lookup map: input PMID -> its linkset object
+            pmid_to_linkset = {
+                ls.get("ids", [None])[0]: ls
+                for ls in linksets
+                if ls.get("ids")
+                and isinstance(ls.get("ids"), list)
+                and len(ls["ids"]) > 0
+            }
+
+            for pmid in pmids:
+                linkset = pmid_to_linkset.get(pmid)
+                if not linkset:
+                    continue
+
+                linksetdbs = linkset.get("linksetdbs", [])
+                pubmed_pubmed_links = []
+
+                for linksetdb in linksetdbs:
+                    if linksetdb.get("linkname") == "pubmed_pubmed":
+                        pubmed_pubmed_links = linksetdb.get("links", [])
+                        break
+
+                if pubmed_pubmed_links:
+                    # Sort links by score (descending)
+                    def get_score(link):
+                        try:
+                            return float(link.get("score", -1.0))
+                        except (ValueError, TypeError):
+                            return -1.0
+
+                    sorted_links = sorted(
+                        pubmed_pubmed_links, key=get_score, reverse=True
+                    )
+
+                    # Get the ID of the top-scoring link
+                    if sorted_links:
+                        top_link = sorted_links[0]
+                        most_related.append(top_link.get("id"))
+
+        except (AttributeError, KeyError, TypeError, IndexError) as e:
+            print(f"Error parsing related articles data: {e}")
+            raise e
+
+        sample_num = min(article_count, len(most_related))
+        random_sample = random.sample(most_related, sample_num)
+        return random_sample
+
+    async def get_article_keywords(self, pmid: list[str]) -> list[str]:
+        """
+        Retrieves keywords for a list of PMIDs.
+        """
+        articles = await self.fetch(pmid)
+
+        if not articles:
+            return []
+
+        keywords = set()
+
+        for article in articles:
+            medline_citation = article.get("MedlineCitation", {})
+            if medline_citation:
+                # get mesh headings
+                mesh_heading_list = medline_citation.get("MeshHeadingList", {})
+                if mesh_heading_list:
+                    mesh_headings = mesh_heading_list.get("MeshHeading", [])
+                    if isinstance(mesh_headings, dict):
+                        mesh_headings = [mesh_headings]
+
+                    for mesh_heading in mesh_headings:
+                        descriptor_name = mesh_heading.get("DescriptorName", {})
+                        if descriptor_name:
+                            keyword = descriptor_name.get("#text", "")
+                            if keyword and descriptor_name.get("@MajorTopicYN") == "Y":
+                                keywords.add(keyword)
+
+                # get other keywords
+                keyword_list = medline_citation.get("KeywordList", {})
+                if keyword_list:
+                    keywords_data = keyword_list.get("Keyword", [])
+                    if isinstance(keywords_data, dict):
+                        keywords_data = [keywords_data]
+
+                    for keyword_entry in keywords_data:
+                        keyword = keyword_entry.get("#text", "")
+                        if keyword:
+                            keywords.add(keyword)
+
+        return list(keywords)
 
     @asynccontextmanager
     async def _create_http_client(self) -> AsyncIterator[httpx.AsyncClient]:
