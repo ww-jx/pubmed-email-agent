@@ -106,7 +106,7 @@ class LLMTools:
             }
         )
 
-        return response.text()
+        return response.text
 
     def _create_rating_links(self, user_id: str, article_id: str) -> str:
         """

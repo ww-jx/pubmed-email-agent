@@ -89,9 +89,7 @@ class Agent:
 
         retries = state.get("retries", 0)
 
-        if len(state["article_ids"]) >= self.article_count - len(
-            state["related_article_ids"]
-        ):
+        if len(state["article_ids"]) >= self.article_count:
             print("check passed: sufficient articles found")
             return "proceed"
 
@@ -131,20 +129,22 @@ class Agent:
 
         if not feedback:
             print("No feedback to process")
-            return {}
+            return {"article_ids": []}
 
         positive_pmids = [article.pmid for article in feedback if article.rating >= 4]
 
         negative_pmids = [article.pmid for article in feedback if article.rating <= 2]
 
         # get related articles for positive feedback
-        positive_articles = await self.pubmed_tools.get_related_articles(positive_pmids)
+        related_articles = await self.pubmed_tools.get_related_articles(positive_pmids)
 
         # get negative keywords to avoid
         negative_keywords = await self.pubmed_tools.get_article_keywords(negative_pmids)
 
+        print(f"Found {len(related_articles)} related articles from feedback")
+
         return {
-            "related_article_ids": positive_articles,
+            "article_ids": related_articles,
             "negative_keywords": negative_keywords,
         }
 
@@ -159,14 +159,22 @@ class Agent:
 
         search_from_date_str = search_date.strftime("%Y/%m/%d")
 
+        # Calculate how many more articles we need from search
+        existing_count = len(state.get("article_ids", []))
+        search_count = max(0, self.article_count - existing_count)
+
+        print(
+            f"Requesting {search_count} articles from search (already have {existing_count} articles)"
+        )
+
         search_req = self.llm_tools.generate_search_query(
             profile.conditions,
             state["negative_keywords"],
             search_from_date_str,
-            max(0, self.article_count - len(state["related_article_ids"])),
+            search_count,
         )
 
-        search_req.retmax = self.article_count - len(state["related_article_ids"])
+        search_req.retmax = search_count
         search_req.sort = "pub_date"
 
         return {"search_request": search_req}
@@ -174,22 +182,32 @@ class Agent:
     async def _search_for_articles(self, state: AgentState) -> dict:
         print("Searching PubMed")
 
-        ids = await self.pubmed_tools.search(state["search_request"])
+        search_ids = await self.pubmed_tools.search(state["search_request"])
+        print(f"Found {len(search_ids)} articles from search.")
 
-        print(f"Found {len(ids)} articles.")
+        # Get existing article IDs and append new search results
+        article_ids = state.get("article_ids", [])
+
+        # Remove duplicates while preserving order
+        for sid in search_ids:
+            if sid not in article_ids:
+                article_ids.append(sid)
+
+        # Limit to article_count
+        article_ids = article_ids[: self.article_count]
+
+        print(f"Total unique articles: {len(article_ids)}")
 
         retries = state.get("retries", 0)
-        if len(ids) != self.article_count - len(state["related_article_ids"]):
+        if len(article_ids) < self.article_count:
             retries += 1
 
-        return {"article_ids": ids, "retries": retries}
+        return {"article_ids": article_ids, "retries": retries}
 
     async def _fetch_article_details(self, state: AgentState) -> dict:
-        print("Fetching article details")
+        print(f"Fetching article details for {len(state['article_ids'])} articles")
 
-        articles = await self.pubmed_tools.fetch(
-            state["article_ids"] + state["related_article_ids"]
-        )
+        articles = await self.pubmed_tools.fetch(state["article_ids"])
 
         return {"fetched_articles": articles}
 

@@ -1,4 +1,4 @@
-from typing import AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, List
 
 import json
 import httpx
@@ -78,7 +78,7 @@ class PubmedTools:
         (or None if none found).
         """
         if not pmids:
-            return {}
+            return []
 
         params = ELinkRequest(
             dbfrom=Db.PUBMED,
@@ -94,13 +94,9 @@ class PubmedTools:
             try:
                 response = await elink(client, params)
                 data = json.loads(response)
-            except (
-                httpx.RequestError,
-                httpx.HTTPStatusError,
-                json.JSONDecodeError,
-            ) as e:
+            except Exception as e:
                 print(f"Error fetching related articles: {e}")
-                return most_related
+                return []
 
         try:
             linksets = data.get("linksets", [])
@@ -144,7 +140,7 @@ class PubmedTools:
                         top_link = sorted_links[0]
                         most_related.append(top_link.get("id"))
 
-        except (AttributeError, KeyError, TypeError, IndexError) as e:
+        except Exception as e:
             print(f"Error parsing related articles data: {e}")
             raise e
 
@@ -203,6 +199,6 @@ class PubmedTools:
             "tool": self.tool_name,
             "email": self.email,
         }
-
-        async with httpx.AsyncClient(headers=headers) as client:
+        timeout = httpx.Timeout(30.0, connect=5.0)
+        async with httpx.AsyncClient(headers=headers, timeout=timeout) as client:
             yield client
