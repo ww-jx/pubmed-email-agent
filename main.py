@@ -17,6 +17,9 @@ from src.pubmed_email_agent.config import (
     db_connection_string,
     llm,
 )
+from src.pubmed_email_agent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 async def main():
@@ -37,12 +40,12 @@ async def main():
             }
 
             await agent.run(initial_state)
-            print(f"Processed user {user_id} successfully.")
+            logger.info(f"Processed user {user_id} successfully.")
         except Exception as e:
-            print(f"Error processing user {user_id}: {e}")
+            logger.error(f"Error processing user {user_id}: {e}")
             continue
 
-    print("All users processed.")
+    logger.info("All users processed.")
 
 
 if __name__ == "__main__":

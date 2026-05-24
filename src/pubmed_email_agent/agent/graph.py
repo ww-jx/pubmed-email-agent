@@ -8,6 +8,9 @@ from src.pubmed_email_agent.agent.state import AgentState
 from src.pubmed_email_agent.tools.llm.client import LLMTools
 from src.pubmed_email_agent.tools.user.client import UserTools
 from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
+from src.pubmed_email_agent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class Agent:
@@ -77,7 +80,7 @@ class Agent:
 
     def _subscription_check(self, state: AgentState) -> str:
         if state["user_profile"].subscribed:
-            print("User is subscribed, proceeding.")
+            logger.info("User is subscribed, proceeding.")
             return "continue"
 
         return "end"
@@ -90,24 +93,24 @@ class Agent:
         retries = state.get("retries", 0)
 
         if len(state["article_ids"]) >= self.article_count:
-            print("check passed: sufficient articles found")
+            logger.info("check passed: sufficient articles found")
             return "proceed"
 
         if retries < self.max_retries:
-            print("check failed: insufficient articles, retrying")
+            logger.info("check failed: insufficient articles, retrying")
             return "retry"
 
         if retries >= self.max_retries and len(state["article_ids"]) == 0:
-            print("No articles found after maximum retries, ending process")
+            logger.warning("No articles found after maximum retries, ending process")
             return "end"
 
-        print(
+        logger.info(
             "check failed: maximum retries reached, proceeding with available articles"
         )
         return "proceed"
 
     async def _get_user_data(self, state: AgentState) -> dict:
-        print(f"Fetching profile for user: {state['user_id']}")
+        logger.info(f"Fetching profile for user: {state['user_id']}")
 
         profile = await self.user_tools.get_user_profile(state["user_id"])
 
@@ -122,13 +125,13 @@ class Agent:
         return {"user_profile": profile}
 
     async def _process_feedback(self, state: AgentState) -> dict:
-        print("Processing user feedback")
+        logger.info("Processing user feedback")
 
         profile = state["user_profile"]
         feedback = profile.feedback
 
         if not feedback:
-            print("No feedback to process")
+            logger.info("No feedback to process")
             return {"article_ids": []}
 
         positive_pmids = [article.pmid for article in feedback if article.rating >= 4]
@@ -141,7 +144,7 @@ class Agent:
         # get negative keywords to avoid
         negative_keywords = await self.pubmed_tools.get_article_keywords(negative_pmids)
 
-        print(f"Found {len(related_articles)} related articles from feedback")
+        logger.info(f"Found {len(related_articles)} related articles from feedback")
 
         return {
             "article_ids": related_articles,
@@ -149,7 +152,7 @@ class Agent:
         }
 
     def _generate_search_request(self, state: AgentState) -> dict:
-        print("Generating search request")
+        logger.info("Generating search request")
 
         profile = state["user_profile"]
         if profile.last_email_date is None:
@@ -163,7 +166,7 @@ class Agent:
         existing_count = len(state.get("article_ids", []))
         search_count = max(0, self.article_count - existing_count)
 
-        print(
+        logger.info(
             f"Requesting {search_count} articles from search (already have {existing_count} articles)"
         )
 
@@ -180,10 +183,10 @@ class Agent:
         return {"search_request": search_req}
 
     async def _search_for_articles(self, state: AgentState) -> dict:
-        print("Searching PubMed")
+        logger.info("Searching PubMed")
 
         search_ids = await self.pubmed_tools.search(state["search_request"])
-        print(f"Found {len(search_ids)} articles from search.")
+        logger.info(f"Found {len(search_ids)} articles from search.")
 
         # Get existing article IDs and append new search results
         article_ids = state.get("article_ids", [])
@@ -196,7 +199,7 @@ class Agent:
         # Limit to article_count
         article_ids = article_ids[: self.article_count]
 
-        print(f"Total unique articles: {len(article_ids)}")
+        logger.info(f"Total unique articles: {len(article_ids)}")
 
         retries = state.get("retries", 0)
         if len(article_ids) < self.article_count:
@@ -205,14 +208,16 @@ class Agent:
         return {"article_ids": article_ids, "retries": retries}
 
     async def _fetch_article_details(self, state: AgentState) -> dict:
-        print(f"Fetching article details for {len(state['article_ids'])} articles")
+        logger.info(
+            f"Fetching article details for {len(state['article_ids'])} articles"
+        )
 
         articles = await self.pubmed_tools.fetch(state["article_ids"])
 
         return {"fetched_articles": articles}
 
     def _summarize_articles(self, state: AgentState) -> dict:
-        print("Summarizing articles")
+        logger.info("Summarizing articles")
 
         summaries = []
 
@@ -242,7 +247,7 @@ class Agent:
         return {"summaries": summaries}
 
     def _format_email(self, state: AgentState) -> dict:
-        print("Formatting email content")
+        logger.info("Formatting email content")
 
         user_profile = state["user_profile"]
         summaries = state["summaries"]
@@ -252,7 +257,7 @@ class Agent:
         return {"email_content": email_content}
 
     async def _send_email(self, state: AgentState) -> dict:
-        print("Sending email")
+        logger.info("Sending email")
 
         user_profile = state["user_profile"]
         email_content = state["email_content"]
@@ -262,13 +267,15 @@ class Agent:
         success = self.user_tools.send_email(user_profile.email, subject, email_content)
 
         if success:
-            print(f"Email sent to {user_profile.id}")
+            logger.info(f"Email sent to {user_profile.id}")
             update_success = await self.user_tools.update_last_email_date(
                 user_profile.id
             )
             if not update_success:
-                print(f"Failed to update last email date for user {user_profile.id}")
+                logger.error(
+                    f"Failed to update last email date for user {user_profile.id}"
+                )
         else:
-            print(f"Failed to send email to {user_profile.id}")
+            logger.error(f"Failed to send email to {user_profile.id}")
 
         return {}

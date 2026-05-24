@@ -16,6 +16,10 @@ from pubmedclient.models import (
     RetMode,
 )
 
+from src.pubmed_email_agent.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class PubmedTools:
     def __init__(self, tool_name: str, email: str):
@@ -95,7 +99,7 @@ class PubmedTools:
                 response = await elink(client, params)
                 data = json.loads(response)
             except Exception as e:
-                print(f"Error fetching related articles: {e}")
+                logger.error(f"Error fetching related articles: {e}")
                 return []
 
         try:
@@ -124,7 +128,7 @@ class PubmedTools:
                         break
 
                 if pubmed_pubmed_links:
-                    # Sort links by score (descending)
+                    # sort links by score (desc)
                     def get_score(link):
                         try:
                             return float(link.get("score", -1.0))
@@ -135,13 +139,13 @@ class PubmedTools:
                         pubmed_pubmed_links, key=get_score, reverse=True
                     )
 
-                    # Get the ID of the top-scoring link
+                    # get top-scoring id
                     if sorted_links:
                         top_link = sorted_links[0]
                         most_related.append(top_link.get("id"))
 
         except Exception as e:
-            print(f"Error parsing related articles data: {e}")
+            logger.error(f"Error parsing related articles data: {e}")
             raise e
 
         sample_num = min(article_count, len(most_related))

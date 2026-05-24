@@ -9,6 +9,9 @@ from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
+from src.pubmed_email_agent.logger import get_logger
+
+logger = get_logger(__name__)
 
 @dataclass
 class UserFeedback:
@@ -61,7 +64,7 @@ class UserTools:
 
             user_ids = [str(user_id) for user_id in result.scalars().all()]
 
-            print(f"Found {len(user_ids)} users.")
+            logger.info(f"Found {len(user_ids)} users.")
             return user_ids
 
     async def get_user_profile(self, user_id: str) -> Optional[UserProfile]:
@@ -112,7 +115,7 @@ class UserTools:
             self.email_client.send(message)
             return True
         except Exception as e:
-            print(f"Error sending email to {to_email}: {e}")
+            logger.error(f"Error sending email to {to_email}: {e}")
             return False
 
     async def update_last_email_date(self, user_id: str) -> bool:
@@ -128,7 +131,7 @@ class UserTools:
                 await session.commit()
             return True
         except Exception as e:
-            print(f"Error updating last_email_date for user {user_id}: {e}")
+            logger.error(f"Error updating last_email_date for user {user_id}: {e}")
             return False
 
     async def get_user_feedback(self, user_id: str) -> List[UserFeedback]:
