@@ -132,7 +132,7 @@ class Agent:
 
         if not feedback:
             logger.info("No feedback to process")
-            return {"article_ids": []}
+            return {"article_ids": [], "negative_keywords": []}
 
         positive_pmids = [article.pmid for article in feedback if article.rating >= 4]
 
