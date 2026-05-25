@@ -6,18 +6,17 @@ on:
       - main
     paths:
       - 'supabase/functions/**'
+      - '.github/workflows/deploy-edge-functions.yml'
+  workflow_dispatch:
 
 jobs:
   deploy-function:
     runs-on: ubuntu-latest
-    
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-      FEEDBACK_SUCCESS_URL: ${{ secrets.FEEDBACK_SUCCESS_URL }}
-      FEEDBACK_ERROR_URL: ${{ secrets.FEEDBACK_ERROR_URL }}
-      UNSUBSCRIBE_SUCCESS_URL: ${{ secrets.UNSUBSCRIBE_SUCCESS_URL }}
-      UNSUBSCRIBE_ERROR_URL: ${{ secrets.UNSUBSCRIBE_ERROR_URL }}
+      FEEDBACK_BASE_URL: ${{ secrets.FEEDBACK_BASE_URL }}
+      UNSUBSCRIBE_BASE_URL: ${{ secrets.UNSUBSCRIBE_BASE_URL }}
 
     steps:
       - name: Checkout Code
@@ -31,10 +30,8 @@ jobs:
       - name: Set All Function Secrets
         run: |
           supabase secrets set --project-ref $SUPABASE_PROJECT_REF \
-            FEEDBACK_SUCCESS_URL=$FEEDBACK_SUCCESS_URL \
-            FEEDBACK_ERROR_URL=$FEEDBACK_ERROR_URL \
-            UNSUBSCRIBE_SUCCESS_URL=$UNSUBSCRIBE_SUCCESS_URL \
-            UNSUBSCRIBE_ERROR_URL=$UNSUBSCRIBE_ERROR_URL
+            FEEDBACK_BASE_URL=$FEEDBACK_BASE_URL \
+            UNSUBSCRIBE_BASE_URL=$UNSUBSCRIBE_BASE_URL
 
       - name: Deploy 'record-feedback' Function
         run: supabase functions deploy record-feedback --project-ref $SUPABASE_PROJECT_REF --no-verify-jwt

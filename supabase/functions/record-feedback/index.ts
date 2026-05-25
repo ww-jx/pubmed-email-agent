@@ -6,8 +6,9 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('DB_SERVICE_ROLE_KEY')!
   )
 
-  const successUrl = Deno.env.get('FEEDBACK_SUCCESS_URL')!
-  const errorUrl = Deno.env.get('FEEDBACK_ERROR_URL')!
+  const baseUrl = Deno.env.get('FEEDBACK_BASE_URL')!;
+  const successUrl = `${baseUrl.replace(/\/+$/, '')}/success`;
+  const errorUrl = `${baseUrl.replace(/\/+$/, '')}/error`;
 
   try {
     const url = new URL(req.url)
