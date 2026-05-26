@@ -13,6 +13,7 @@ from src.pubmed_email_agent.logger import get_logger
 
 logger = get_logger(__name__)
 
+
 @dataclass
 class UserFeedback:
     id: int
@@ -55,23 +56,26 @@ class UserTools:
 
     async def get_all_user_ids(self) -> List[str]:
         """
-        Retrieves a list of all user IDs.
+        Retrieves list of all user IDs.
         """
-        async with AsyncSession(self.engine) as session:
-            result = await session.execute(
-                text(f"SELECT id FROM {self.user_table} ORDER BY id")
-            )
+        try:
+            async with AsyncSession(self.engine) as session:
+                result = await session.execute(
+                    text(f"SELECT id FROM {self.user_table} ORDER BY id")
+                )
 
-            user_ids = [str(user_id) for user_id in result.scalars().all()]
+                user_ids = [str(user_id) for user_id in result.scalars().all()]
 
-            logger.info(f"Found {len(user_ids)} users.")
-            return user_ids
+                logger.info(f"Found {len(user_ids)} users.")
+                return user_ids
+        except Exception as e:
+            logger.error(f"Error fetching all user IDs: {e}")
+            return []
 
     async def get_user_profile(self, user_id: str) -> Optional[UserProfile]:
         """
         Retrieves the profile of a user by their ID and returns a UserProfile object.
         """
-
         query = text(f"""
             SELECT 
                 id, 
@@ -88,20 +92,23 @@ class UserTools:
             WHERE id = :user_id
         """)
 
-        async with AsyncSession(self.engine) as session:
-            result = await session.execute(query, {"user_id": user_id})
-            profile_data = result.mappings().first()
+        try:
+            async with AsyncSession(self.engine) as session:
+                result = await session.execute(query, {"user_id": user_id})
+                profile_data = result.mappings().first()
 
-        if profile_data:
-            return UserProfile(**profile_data)
+            if profile_data:
+                return UserProfile(**profile_data)
 
-        return None
+            return None
+        except Exception as e:
+            logger.warning(f"DB error or invalid format for ID '{user_id}': {e}")
+            return None
 
     def send_email(self, to_email: str, subject: str, body: str) -> bool:
         """
         Sends an email to the specified recipient.
         """
-
         html_content = markdown2.markdown(body)
 
         message = Mail(
@@ -119,6 +126,9 @@ class UserTools:
             return False
 
     async def update_last_email_date(self, user_id: str) -> bool:
+        """
+        Updates the last email date
+        """
         query = text(f"""
             UPDATE {self.user_table}
             SET last_email_date = NOW()
@@ -138,7 +148,6 @@ class UserTools:
         """
         Retrieves feedback for a specific user.
         """
-
         query = text(f"""
             SELECT 
                 id, 
@@ -151,8 +160,14 @@ class UserTools:
             ORDER BY created_at DESC
         """)
 
-        async with AsyncSession(self.engine) as session:
-            result = await session.execute(query, {"user_id": user_id})
-            feedback_entries = [UserFeedback(**row) for row in result.mappings().all()]
+        try:
+            async with AsyncSession(self.engine) as session:
+                result = await session.execute(query, {"user_id": user_id})
+                feedback_entries = [
+                    UserFeedback(**row) for row in result.mappings().all()
+                ]
 
-        return feedback_entries
+            return feedback_entries
+        except Exception as e:
+            logger.error(f"Error fetching feedback for user {user_id}: {e}")
+            return []
