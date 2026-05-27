@@ -240,6 +240,7 @@ class Agent:
                 title=title,
                 link=link,
                 summary=summary_text,
+                rating_links_html="",
             )
 
             summaries.append(summary)
