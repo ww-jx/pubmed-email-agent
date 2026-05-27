@@ -32,7 +32,10 @@ class Agent:
         self.app = self._build_graph()
 
     async def run(self, initial_state: AgentState) -> AgentState:
-        state = await self.app.ainvoke(initial_state)
+        state = await self.app.ainvoke(
+            initial_state,
+            config={"run_name": f"user-{initial_state['user_id']}"},
+        )
 
         return cast(AgentState, state)
 
@@ -151,7 +154,7 @@ class Agent:
             "negative_keywords": negative_keywords,
         }
 
-    def _generate_search_request(self, state: AgentState) -> dict:
+    async def _generate_search_request(self, state: AgentState) -> dict:
         logger.info("Generating search request")
 
         profile = state["user_profile"]
@@ -170,7 +173,7 @@ class Agent:
             f"Requesting {search_count} articles from search (already have {existing_count} articles)"
         )
 
-        search_req = self.llm_tools.generate_search_query(
+        search_req = await self.llm_tools.generate_search_query(
             profile.conditions,
             state["negative_keywords"],
             search_from_date_str,
@@ -216,7 +219,7 @@ class Agent:
 
         return {"fetched_articles": articles}
 
-    def _summarize_articles(self, state: AgentState) -> dict:
+    async def _summarize_articles(self, state: AgentState) -> dict:
         logger.info("Summarizing articles")
 
         summaries = []
@@ -233,7 +236,7 @@ class Agent:
                 .get("ArticleTitle", "")
             )
             link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
-            summary_text = self.llm_tools.summarize_article(article)
+            summary_text = await self.llm_tools.summarize_article(article)
 
             summary = Summary(
                 pmid=pmid,
@@ -247,13 +250,13 @@ class Agent:
 
         return {"summaries": summaries}
 
-    def _format_email(self, state: AgentState) -> dict:
+    async def _format_email(self, state: AgentState) -> dict:
         logger.info("Formatting email content")
 
         user_profile = state["user_profile"]
         summaries = state["summaries"]
 
-        email_content = self.llm_tools.format_email(user_profile, summaries)
+        email_content = await self.llm_tools.format_email(user_profile, summaries)
 
         return {"email_content": email_content}
 

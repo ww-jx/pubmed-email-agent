@@ -1,9 +1,9 @@
-from typing import cast, Any, List
+from typing import Any, List
 
 import json
 from pubmedclient.models import ESearchRequest
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.language_models.chat_models import BaseChatModel
+from openrouter import OpenRouter
+from langsmith import traceable
 
 from src.pubmed_email_agent.agent.state import Summary
 from src.pubmed_email_agent.tools.user.client import UserProfile
@@ -19,15 +19,19 @@ from src.pubmed_email_agent.prompts import (
 
 class LLMTools:
     def __init__(
-        self, llm: BaseChatModel, feedback_base_url: str, unsubscribe_base_url: str
+        self,
+        client: OpenRouter,
+        model: str,
+        feedback_base_url: str,
+        unsubscribe_base_url: str,
     ):
-        self.llm = llm
+        self.client = client
+        self.model = model
         self.feedback_base_url = feedback_base_url
         self.unsubscribe_base_url = unsubscribe_base_url
 
-        self.search_llm = self.llm.with_structured_output(ESearchRequest)
-
-    def generate_search_query(
+    @traceable(name="generate_search_query")
+    async def generate_search_query(
         self,
         interests: list[str],
         negative_keywords: list[str],
@@ -37,48 +41,50 @@ class LLMTools:
         """
         Generates PubMed search parameters
         """
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", GENERATE_QUERY_SYS),
-                ("user", GENERATE_QUERY_USER),
-            ]
+        user_content = GENERATE_QUERY_USER.format(
+            interests=", ".join(interests),
+            negative_keywords=negative_keywords,
+            date=search_from_date,
+            article_count=article_count,
         )
 
-        chain = prompt | self.search_llm
-
-        response = chain.invoke(
-            {
-                "interests": ", ".join(interests),
-                "negative_keywords": negative_keywords,
-                "date": search_from_date,
-                "article_count": article_count,
-            }
+        response = await self.client.chat.send_async(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": GENERATE_QUERY_SYS},
+                {"role": "user", "content": user_content},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "ESearchRequest",
+                    "strict": True,
+                    "schema": ESearchRequest.model_json_schema(),
+                },
+            },
         )
 
-        response = cast(ESearchRequest, response)
+        return ESearchRequest.model_validate_json(response.choices[0].message.content)
 
-        return response
+    @traceable(name="summarize_article")
+    async def summarize_article(self, article_data: dict[str, Any]) -> str:
+        """Summarizes the given article data."""
+        user_content = SUMMARIZE_ARTICLE_USER.format(article_data=article_data)
 
-    def summarize_article(self, article_data: dict[str, Any]) -> str:
-        """
-        Summarizes the given article data
-        """
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", SUMMARIZE_ARTICLE_SYS),
-                ("user", SUMMARIZE_ARTICLE_USER),
-            ]
+        response = await self.client.chat.send_async(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SUMMARIZE_ARTICLE_SYS},
+                {"role": "user", "content": user_content},
+            ],
         )
 
-        chain = prompt | self.llm
+        return response.choices[0].message.content
 
-        response = chain.invoke({"article_data": article_data})
-
-        return response.text
-
-    def format_email(self, user_profile: UserProfile, summaries: List[Summary]) -> str:
+    @traceable(name="format_email")
+    async def format_email(
+        self, user_profile: UserProfile, summaries: List[Summary]
+    ) -> str:
         """
         Formats the email content based on the summary
         """
@@ -88,43 +94,34 @@ class LLMTools:
                 user_profile.id, summary["pmid"]
             )
 
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", FORMAT_EMAIL_SYS),
-                ("user", FORMAT_EMAIL_USER),
-            ]
+        user_content = FORMAT_EMAIL_USER.format(
+            first_name=user_profile.first_name,
+            user_profile=str(user_profile),
+            summaries_json=json.dumps([dict(s) for s in summaries], indent=2),
+            unsubscribe_link=self._create_unsubscribe_link(user_profile.id),
         )
 
-        chain = prompt | self.llm
-
-        response = chain.invoke(
-            {
-                "first_name": user_profile.first_name,
-                "user_profile": str(user_profile),
-                "summaries_json": json.dumps([dict(s) for s in summaries], indent=2),
-                "unsubscribe_link": self._create_unsubscribe_link(user_profile.id),
-            }
+        response = await self.client.chat.send_async(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": FORMAT_EMAIL_SYS},
+                {"role": "user", "content": user_content},
+            ],
         )
 
-        return response.text
+        return response.choices[0].message.content
 
     def _create_rating_links(self, user_id: str, article_id: str) -> str:
-        """
-        Create HTML rating links
-        """
-        links = []
-        for i in range(1, 6):
-            url = f"{self.feedback_base_url}?user_id={user_id}&pmid={article_id}&rating={i}"
-            links.append(
-                f'<a href="{url}" style="text-decoration: none; margin: 0 5px; font-size: 1.2em; color: #007bff;">{i}</a>'
-            )
+        links = [
+            f'<a href="{self.feedback_base_url}?user_id={user_id}&pmid={article_id}&rating={i}" '
+            f'style="text-decoration: none; margin: 0 5px; font-size: 1.2em; color: #007bff;">{i}</a>'
+            for i in range(1, 6)
+        ]
 
         html_string = " ".join(links)
+
         return f"<b>How relevant was this?</b><br>{html_string}<br><small>(1=Not Relevant, 5=Very Relevant)</small>"
 
     def _create_unsubscribe_link(self, user_id: str) -> str:
-        """
-        Create unsubscribe link
-        """
         url = f"{self.unsubscribe_base_url}?user_id={user_id}"
         return f'<a href="{url}">Unsubscribe</a>'

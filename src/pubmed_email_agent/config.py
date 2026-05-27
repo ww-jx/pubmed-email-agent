@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from langchain_openai.chat_models.base import BaseChatOpenAI
+from openrouter import OpenRouter
 
 load_dotenv()
 
@@ -16,7 +16,6 @@ FEEDBACK_BASE_URL = os.getenv("FEEDBACK_BASE_URL", "")
 UNSUBSCRIBE_BASE_URL = os.getenv("UNSUBSCRIBE_BASE_URL", "")
 
 LLM_API_KEY = os.getenv("OPENROUTER_API_KEY")
-LLM_API_BASE = os.getenv("OPENROUTER_BASE_URL")
 LLM_MODEL = os.getenv("OPENROUTER_MODEL")
 
 PUBMED_EMAIL = os.getenv("PUBMED_EMAIL", "")
@@ -30,8 +29,4 @@ db_connection_string = (
     f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-llm = BaseChatOpenAI(
-    openai_api_key=LLM_API_KEY,
-    openai_api_base=LLM_API_BASE,
-    model=LLM_MODEL,
-)
+llm = OpenRouter(api_key=LLM_API_KEY)

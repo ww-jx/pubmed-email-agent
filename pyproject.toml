@@ -11,6 +11,7 @@ dependencies = [
   "langgraph>=0.6.7",
   "langsmith>=0.4.28",
   "markdown2>=2.5.4",
+  "openrouter>=0.9.1",
   "pubmedclient @ git+https://github.com/xyberii4/pubmedclient.git@feature/elink",
   "python-dotenv>=1.1.1",
   "sendgrid>=6.12.5",
