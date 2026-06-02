@@ -15,6 +15,9 @@ from src.pubmed_email_agent.prompts import (
     FORMAT_EMAIL_SYS,
     FORMAT_EMAIL_USER,
 )
+from src.pubmed_email_agent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class LLMTools:
@@ -37,7 +40,7 @@ class LLMTools:
         negative_keywords: list[str],
         search_from_date: str,
         article_count: int = 5,
-    ) -> ESearchRequest:
+    ) -> ESearchRequest | None:
         """
         Generates PubMed search parameters
         """
@@ -48,68 +51,79 @@ class LLMTools:
             article_count=article_count,
         )
 
-        response = await self.client.chat.send_async(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": GENERATE_QUERY_SYS},
-                {"role": "user", "content": user_content},
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "ESearchRequest",
-                    "strict": True,
-                    "schema": ESearchRequest.model_json_schema(),
+        try:
+            response = await self.client.chat.send_async(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": GENERATE_QUERY_SYS},
+                    {"role": "user", "content": user_content},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "ESearchRequest",
+                        "strict": True,
+                        "schema": ESearchRequest.model_json_schema(),
+                    },
                 },
-            },
-        )
+            )
 
-        return ESearchRequest.model_validate_json(response.choices[0].message.content)
+            return ESearchRequest.model_validate_json(
+                response.choices[0].message.content
+            )
+        except Exception as e:
+            logger.error(f"Error generating PubMed query: {e}")
+            return None
 
     @traceable(name="summarize_article")
-    async def summarize_article(self, article_data: dict[str, Any]) -> str:
+    async def summarize_article(self, article_data: dict[str, Any]):
         """Summarizes the given article data."""
         user_content = SUMMARIZE_ARTICLE_USER.format(article_data=article_data)
 
-        response = await self.client.chat.send_async(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SUMMARIZE_ARTICLE_SYS},
-                {"role": "user", "content": user_content},
-            ],
-        )
+        try:
+            response = await self.client.chat.send_async(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SUMMARIZE_ARTICLE_SYS},
+                    {"role": "user", "content": user_content},
+                ],
+            )
 
-        return response.choices[0].message.content
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error summarizing article: {e}")
+            return None
 
     @traceable(name="format_email")
-    async def format_email(
-        self, user_profile: UserProfile, summaries: List[Summary]
-    ) -> str:
+    async def format_email(self, user_profile: UserProfile, summaries: List[Summary]):
         """
         Formats the email content based on the summary
         """
+        try:
+            for summary in summaries:
+                summary["rating_links_html"] = self._create_rating_links(
+                    user_profile.id, summary["pmid"]
+                )
 
-        for summary in summaries:
-            summary["rating_links_html"] = self._create_rating_links(
-                user_profile.id, summary["pmid"]
+            user_content = FORMAT_EMAIL_USER.format(
+                first_name=user_profile.first_name,
+                user_profile=str(user_profile),
+                summaries_json=json.dumps([dict(s) for s in summaries], indent=2),
+                unsubscribe_link=self._create_unsubscribe_link(user_profile.id),
             )
 
-        user_content = FORMAT_EMAIL_USER.format(
-            first_name=user_profile.first_name,
-            user_profile=str(user_profile),
-            summaries_json=json.dumps([dict(s) for s in summaries], indent=2),
-            unsubscribe_link=self._create_unsubscribe_link(user_profile.id),
-        )
+            response = await self.client.chat.send_async(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": FORMAT_EMAIL_SYS},
+                    {"role": "user", "content": user_content},
+                ],
+            )
 
-        response = await self.client.chat.send_async(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": FORMAT_EMAIL_SYS},
-                {"role": "user", "content": user_content},
-            ],
-        )
-
-        return response.choices[0].message.content
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error formatting email for {user_profile.id}: {e}")
+            return None
 
     def _create_rating_links(self, user_id: str, article_id: str) -> str:
         links = [
