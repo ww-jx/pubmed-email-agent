@@ -40,7 +40,7 @@ def sample_user_profile():
 
 @pytest.mark.asyncio
 async def test_generate_search_query_success(llm_tools):
-    mock_json = '{"term": "diabetes AND treatment", "retmax": 5}'
+    mock_json = '{"term": "diabetes AND treatment"}'
 
     mock_message = MagicMock()
     mock_message.content = mock_json
@@ -51,12 +51,21 @@ async def test_generate_search_query_success(llm_tools):
     mock_response.choices = [mock_choice]
     llm_tools.client.chat.send_async.return_value = mock_response
 
-    with patch(
-        "src.pubmed_email_agent.tools.llm.client.ESearchRequest"
-    ) as MockESearchRequest:
+    with (
+        patch(
+            "src.pubmed_email_agent.tools.llm.client.LLMPubMedQuery"
+        ) as MockLLMPubMedQuery,
+        patch(
+            "src.pubmed_email_agent.tools.llm.client.ESearchRequest"
+        ) as MockESearchRequest,
+    ):
+        mock_llm_result = MagicMock()
+        mock_llm_result.term = "diabetes AND treatment"
+        MockLLMPubMedQuery.model_validate_json.return_value = mock_llm_result
+        MockLLMPubMedQuery.model_json_schema.return_value = {}
+
         expected_obj = MagicMock()
-        MockESearchRequest.model_json_schema.return_value = {}
-        MockESearchRequest.model_validate_json.return_value = expected_obj
+        MockESearchRequest.return_value = expected_obj
 
         result = await llm_tools.generate_search_query(
             ["diabetes"], ["diet"], "2024-01-01", 5
@@ -64,6 +73,14 @@ async def test_generate_search_query_success(llm_tools):
 
         assert result == expected_obj
         llm_tools.client.chat.send_async.assert_called_once()
+
+        MockESearchRequest.assert_called_once_with(
+            db="pubmed",
+            term="diabetes AND treatment",
+            retmax=5,
+            mindate="2024-01-01",
+            retmode="json",
+        )
 
 
 @pytest.mark.asyncio
