@@ -15,6 +15,8 @@ Generate the search parameters based on the following details: \n
 2.  **Use the `Keywords to Avoid` as guidance.** Where possible, try to exclude articles heavily focused on these specific terms by adding relevant `NOT` clauses (e.g., `AND NOT "term"[MeSH Terms]`).
 3.  **Prioritize Variety:** Do **not** let the `Keywords to Avoid` completely block results related to one of the user's core `Interests`. If avoiding a keyword significantly narrows the results for an interest area, it's okay to include some articles related to that keyword to ensure the user still gets updates across all their stated interests. The goal is a balanced mix.
 4.  Ensure the query structure is valid for PubMed.
+
+IMPORTANT: You must return your response as a valid JSON object matching the requested schema.
 """
 
 SUMMARIZE_ARTICLE_SYS = """

@@ -1,4 +1,5 @@
 from typing import Any, List
+from pydantic import BaseModel, Field
 
 import json
 from pubmedclient.models import ESearchRequest
@@ -18,6 +19,17 @@ from src.pubmed_email_agent.prompts import (
 from src.pubmed_email_agent.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class LLMPubMedQuery(BaseModel):
+    term: str = Field(
+        description=(
+            "The exact Entrez text query string to send to PubMed. "
+            "You MUST use standard PubMed syntax and Boolean operators (AND, OR, NOT). "
+            "Use field tags where appropriate, such as [MeSH Terms] or [Title/Abstract]. "
+            'Example: \'("Diabetes Mellitus, Type 2"[MeSH Terms]) AND ("Diet"[Title/Abstract]) NOT ("mice"[Title/Abstract])\''
+        )
+    )
 
 
 class LLMTools:
@@ -48,29 +60,41 @@ class LLMTools:
             interests=", ".join(interests),
             negative_keywords=negative_keywords,
             date=search_from_date,
-            article_count=article_count,
+        )
+        sys_instr = (
+            GENERATE_QUERY_SYS + f"\n\nPUBMED API EXAMPLES:\n{ESearchRequest.__doc__}"
         )
 
         try:
             response = await self.client.chat.send_async(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": GENERATE_QUERY_SYS},
+                    {"role": "system", "content": sys_instr},
                     {"role": "user", "content": user_content},
                 ],
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
                         "name": "ESearchRequest",
-                        "strict": True,
-                        "schema": ESearchRequest.model_json_schema(),
+                        "strict": False,
+                        "schema": LLMPubMedQuery.model_json_schema(),
                     },
                 },
             )
 
-            return ESearchRequest.model_validate_json(
+            llm_result = LLMPubMedQuery.model_validate_json(
                 response.choices[0].message.content
             )
+
+            req_obj = ESearchRequest(
+                db="pubmed",
+                term=llm_result.term,
+                retmax=article_count,
+                mindate=search_from_date,
+                retmode="json",
+            )
+
+            return req_obj
         except Exception as e:
             logger.error(f"Error generating PubMed query: {e}")
             return None
