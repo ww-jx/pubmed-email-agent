@@ -57,9 +57,8 @@ class PubmedTools:
 
             parsed_response = xmltodict.parse(response)
 
-            article_data = parsed_response.get("PubmedArticleSet", {}).get(
-                "PubmedArticle", []
-            )
+            pubmed_article_set = parsed_response.get("PubmedArticleSet") or {}
+            article_data = pubmed_article_set.get("PubmedArticle", [])
 
             if not article_data:
                 return []
