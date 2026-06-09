@@ -93,9 +93,9 @@ class LinkSet(BaseModel):
     model_config = ConfigDict(extra="ignore")
     dbfrom: str
     ids: List[str]
-    linksetdbs: Optional[List[LinkSetDb]] = None
+    linksetdbs: List[LinkSetDb]
 
 
 class ELinkResponseModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    linksets: Optional[List[LinkSet]] = None
+    linksets: List[LinkSet]

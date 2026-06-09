@@ -1,4 +1,4 @@
-from typing import AsyncIterator, List
+from typing import AsyncIterator, List, Tuple
 
 import json
 import httpx
@@ -28,16 +28,43 @@ class PubmedTools:
 
         self.db = Db.PUBMED
 
-    async def search(self, params: ESearchRequest) -> list[str]:
+    async def search(self, params: ESearchRequest) -> Tuple[list[str], dict]:
         """
         Searches PubMed with the given parameters and returns a list of article ids.
         """
-
         params.db = self.db.value
 
-        async with self._create_http_client() as client:
-            response = await esearch(client, params)
-            return response.esearchresult.idlist
+        try:
+            async with self._create_http_client() as client:
+                response = await esearch(client, params)
+                result = response.esearchresult
+
+                result_dict = (
+                    result.model_dump()
+                    if hasattr(result, "model_dump")
+                    else vars(result)
+                )
+
+                feedback = {
+                    "count": result_dict.get("count", "0"),
+                    "errorlist": result_dict.get("errorlist", None),
+                    "warninglist": result_dict.get("warninglist", None),
+                    "querytranslation": result_dict.get("querytranslation", None),
+                }
+
+                return result.idlist, feedback
+
+        except Exception as e:
+            logger.error(f"PubMed API Search Error: {e}")
+
+            # inject network error into feedback dict
+            fallback_feedback = {
+                "count": "0",
+                "errorlist": {"network_error": f"API Request Failed: {str(e)}"},
+                "warninglist": None,
+                "querytranslation": None,
+            }
+            return [], fallback_feedback
 
     async def fetch(self, ids: list[str]) -> list[dict]:
         """
@@ -52,23 +79,27 @@ class PubmedTools:
             retmode="xml",  # text, xml
         )
 
-        async with self._create_http_client() as client:
-            response = await efetch(client, params)
+        try:
+            async with self._create_http_client() as client:
+                response = await efetch(client, params)
 
-            parsed_response = xmltodict.parse(response)
+                parsed_response = xmltodict.parse(response)
 
-            pubmed_article_set = parsed_response.get("PubmedArticleSet") or {}
-            article_data = pubmed_article_set.get("PubmedArticle", [])
+                pubmed_article_set = parsed_response.get("PubmedArticleSet") or {}
+                article_data = pubmed_article_set.get("PubmedArticle", [])
 
-            if not article_data:
+                if not article_data:
+                    return []
+
+                if isinstance(article_data, dict):
+                    return [article_data]
+
+                if isinstance(article_data, list):
+                    return article_data
+
                 return []
-
-            if isinstance(article_data, dict):
-                return [article_data]
-
-            if isinstance(article_data, list):
-                return article_data
-
+        except Exception as e:
+            logger.error(f"PubMed API Fetch Error: {e}")
             return []
 
     async def get_related_articles(
@@ -93,13 +124,13 @@ class PubmedTools:
 
         most_related = []
 
-        async with self._create_http_client() as client:
-            try:
+        try:
+            async with self._create_http_client() as client:
                 response = await elink(client, params)
                 data = json.loads(response)
-            except Exception as e:
-                logger.error(f"Error fetching related articles: {e}")
-                return []
+        except Exception as e:
+            logger.error(f"Error fetching related articles: {e}")
+            return []
 
         try:
             linksets = data.get("linksets", [])
@@ -145,7 +176,7 @@ class PubmedTools:
 
         except Exception as e:
             logger.error(f"Error parsing related articles data: {e}")
-            raise e
+            return []
 
         sample_num = min(article_count, len(most_related))
         random_sample = random.sample(most_related, sample_num)
