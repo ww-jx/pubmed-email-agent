@@ -1,0 +1,38 @@
+
+name: Agent tests
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-agent.yml'
+      - 'src/pubmed_email_agent//llm/**'
+      - 'tests/test_llm_tools.py'
+  pull_request:
+    paths:
+      - '.github/workflows/test-llm-tools.yml'
+      - 'src/pubmed_email_agent/agent/**'
+      - 'tests/test_agent.py'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run agent tests
+        run: uv run pytest tests/test_agent.py -v
