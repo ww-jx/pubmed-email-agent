@@ -17,6 +17,14 @@ Generate the search parameters based on the following details: \n
 4.  Ensure the query structure is valid for PubMed.
 
 IMPORTANT: You must return your response as a valid JSON object matching the requested schema.
+
+Previous Search Attempts & Errors:
+{previous_searches}
+
+If there are previous search attempts listed above, it means your last query failed to find enough articles. 
+- Look closely at the `errorlist` (e.g., phrasesnotfound) and the `querytranslation`.
+- DO NOT generate the exact same query again. 
+- If a specific MeSH term was not found, try using broader terms or standard [Title/Abstract] tags instead.
 """
 
 SUMMARIZE_ARTICLE_SYS = """

@@ -173,11 +173,14 @@ class Agent:
             f"Requesting {search_count} articles from search (already have {existing_count} articles)"
         )
 
+        previous_searches = state.get("previous_searches", [])
+
         search_req = await self.llm_tools.generate_search_query(
             profile.conditions,
             state["negative_keywords"],
             search_from_date_str,
             search_count,
+            previous_searches,
         )
 
         search_req.retmax = search_count
@@ -188,27 +191,33 @@ class Agent:
     async def _search_for_articles(self, state: AgentState) -> dict:
         logger.info("Searching PubMed")
 
-        search_ids = await self.pubmed_tools.search(state["search_request"])
-        logger.info(f"Found {len(search_ids)} articles from search.")
+        search_ids, feedback = await self.pubmed_tools.search(state["search_request"])
+        logger.info(
+            f"Found {len(search_ids)} articles from search. PubMed Count: {feedback.get('count')}"
+        )
 
         # Get existing article IDs and append new search results
-        article_ids = state.get("article_ids", [])
-
-        # Remove duplicates while preserving order
-        for sid in search_ids:
-            if sid not in article_ids:
-                article_ids.append(sid)
-
-        # Limit to article_count
-        article_ids = article_ids[: self.article_count]
+        article_ids = list(dict.fromkeys(state.get("article_ids", []) + search_ids))[: self.article_count]
 
         logger.info(f"Total unique articles: {len(article_ids)}")
 
         retries = state.get("retries", 0)
+        previous_searches = state.get("previous_searches", [])
+
         if len(article_ids) < self.article_count:
             retries += 1
+            previous_searches.append(
+                {
+                    "attempted_query": state["search_request"].term,
+                    "pubmed_feedback": feedback,
+                }
+            )
 
-        return {"article_ids": article_ids, "retries": retries}
+        return {
+            "article_ids": article_ids,
+            "retries": retries,
+            "previous_searches": previous_searches,
+        }
 
     async def _fetch_article_details(self, state: AgentState) -> dict:
         logger.info(

@@ -23,3 +23,4 @@ class AgentState(TypedDict):
     summaries: List[Summary]
     email_content: str
     retries: int
+    previous_searches: List[dict]

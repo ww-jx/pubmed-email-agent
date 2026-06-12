@@ -52,6 +52,7 @@ class LLMTools:
         negative_keywords: list[str],
         search_from_date: str,
         article_count: int = 5,
+        previous_searches: list[dict] = None,
     ) -> ESearchRequest | None:
         """
         Generates PubMed search parameters
@@ -60,6 +61,9 @@ class LLMTools:
             interests=", ".join(interests),
             negative_keywords=negative_keywords,
             date=search_from_date,
+            previous_searches=json.dumps(previous_searches, indent=2)
+            if previous_searches
+            else "None",
         )
         sys_instr = (
             GENERATE_QUERY_SYS + f"\n\nPUBMED API EXAMPLES:\n{ESearchRequest.__doc__}"

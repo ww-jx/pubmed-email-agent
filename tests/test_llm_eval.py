@@ -114,3 +114,48 @@ async def test_pubmed_query_generation_eval(model_name, case):
         assert count > 0, (
             f"Model {model_name} generated a valid query, but it returned 0 results. Query: {request_obj.term}"
         )
+
+
+@pytest.mark.asyncio
+async def test_agentic_reflection_query_refinement():
+    """
+    Tests that the LLM modifies its query previous search failed.
+    """
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("Skipping live evaluation: OPENROUTER_API_KEY missing.")
+
+    async with OpenRouter(api_key=api_key) as client:
+        llm_tools = LLMTools(client, "openai/gpt-4o-mini", "", "")
+
+        bad_query = '("SuperFakeDisease"[MeSH Terms]) AND ("Treatment"[Title/Abstract])'
+        mock_previous_searches = [
+            {
+                "attempted_query": bad_query,
+                "pubmed_feedback": {
+                    "count": "0",
+                    "errorlist": {
+                        "phrasesnotfound": ["SuperFakeDisease"],
+                        "fieldnotfound": [],
+                    },
+                },
+            }
+        ]
+
+        request_obj = await llm_tools.generate_search_query(
+            interests=["SuperFakeDisease", "Treatment"],
+            negative_keywords=[],
+            search_from_date="2024/01/01",
+            article_count=5,
+            previous_searches=mock_previous_searches,
+        )
+
+        assert request_obj is not None
+
+        new_query = request_obj.term
+
+        assert new_query != bad_query, "LLM failed to modify the query after an error."
+
+        assert '"SuperFakeDisease"[MeSH Terms]' not in new_query, (
+            "LLM ignored the errorlist and reused the bad MeSH term!"
+        )
