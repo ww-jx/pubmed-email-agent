@@ -136,6 +136,16 @@ async def test_full_agent_run_success(agent, sample_user_profile):
 
     final_state = await agent.run(initial_state)
 
+    print("\n--- [MOCK AGENT RUN] ---")
+    print(f"[User] {final_state['user_id']} ({final_state['user_profile'].first_name})")
+    print(f"[Generated Query] {mock_esearch.term}")
+    print(
+        f"[Articles Fetched] {len(final_state['article_ids'])} items: {final_state['article_ids']}"
+    )
+    print(f"[Summaries Gen] {len(final_state['summaries'])} generated")
+    print(f"[Final Email Snippet] {final_state['email_content'][:50]}...")
+    print("-" * 35)
+
     assert final_state["user_profile"] == sample_user_profile
     assert len(final_state["article_ids"]) == 5
     assert len(final_state["summaries"]) == 1
@@ -179,6 +189,11 @@ async def test_agent_retry_loop_behavior(agent, sample_user_profile):
 
     initial_state = AgentState(user_id="user-123")
     final_state = await agent.run(initial_state)
+
+    print("\n--- [AGENT RETRY LOOP EVAL] ---")
+    print(f"[Retries] {final_state['retries']}")
+    print(f"[Articles Fetched] {len(final_state['article_ids'])}")
+    print("-" * 31)
 
     assert final_state["retries"] == 1
     assert len(final_state["article_ids"]) == 5

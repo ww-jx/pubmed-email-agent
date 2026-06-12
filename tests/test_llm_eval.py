@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import pytest
 import httpx
 from dotenv import load_dotenv
@@ -68,6 +69,9 @@ async def test_pubmed_query_generation_eval(model_name, case):
         assert isinstance(request_obj, ESearchRequest)
         assert request_obj.retmax == 5
 
+        print(f"\n--- [EVAL] Model: {model_name} | Case: {case['id']} ---")
+        print(f"[Query Generated] {request_obj.term}")
+
         term_upper = request_obj.term.upper().replace('"', "")
 
         # behavioral assertions
@@ -105,6 +109,12 @@ async def test_pubmed_query_generation_eval(model_name, case):
         )
 
         result_details = pubmed_data["esearchresult"]
+        count = int(result_details.get("count", 0))
+
+        print(f"[PubMed API Count] {count}")
+        if "errorlist" in result_details:
+            print(f"[PubMed API ErrorList] {json.dumps(result_details['errorlist'])}")
+        print("-" * 50)
 
         assert "errorlist" not in result_details, (
             f"Model {model_name} generated invalid syntax rejected by PubMed: {request_obj.term}"
@@ -142,6 +152,12 @@ async def test_agentic_reflection_query_refinement():
             }
         ]
 
+        print("\n--- [REFLECTION EVAL] ---")
+        print(f"[Original Bad Query] {bad_query}")
+        print(
+            f"[PubMed Mock Error] {json.dumps(mock_previous_searches[0]['pubmed_feedback']['errorlist'])}"
+        )
+
         request_obj = await llm_tools.generate_search_query(
             interests=["SuperFakeDisease", "Treatment"],
             negative_keywords=[],
@@ -153,6 +169,8 @@ async def test_agentic_reflection_query_refinement():
         assert request_obj is not None
 
         new_query = request_obj.term
+        print(f"[Refined Query] {new_query}")
+        print("-" * 25)
 
         assert new_query != bad_query, "LLM failed to modify the query after an error."
 
