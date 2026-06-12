@@ -115,7 +115,10 @@ async def test_full_agent_run_success(agent, sample_user_profile):
     mock_esearch = ESearchRequest(term="Diabetes", db="pubmed")
     agent.llm_tools.generate_search_query.return_value = mock_esearch
 
-    agent.pubmed_tools.search.return_value = ["101", "102", "103", "104", "105"]
+    agent.pubmed_tools.search.return_value = (
+        ["101", "102", "103", "104", "105"],
+        {"count": "5"},
+    )
     agent.pubmed_tools.fetch.return_value = [
         {
             "MedlineCitation": {
@@ -166,7 +169,10 @@ async def test_agent_retry_loop_behavior(agent, sample_user_profile):
         term="bs", db="pubmed"
     )
 
-    agent.pubmed_tools.search.side_effect = [["101", "102"], ["103", "104", "105"]]
+    agent.pubmed_tools.search.side_effect = [
+        (["101", "102"], {"count": "2"}),
+        (["103", "104", "105"], {"count": "3"}),
+    ]
 
     agent.pubmed_tools.fetch.return_value = []
     agent.llm_tools.format_email.return_value = "Done"
