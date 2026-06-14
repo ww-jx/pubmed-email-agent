@@ -5,6 +5,7 @@ import json
 from pubmedclient.models import ESearchRequest
 from openrouter import OpenRouter
 from langsmith import traceable
+from fastembed import TextEmbedding
 
 from src.pubmed_email_agent.agent.state import Summary
 from src.pubmed_email_agent.tools.user.client import UserProfile
@@ -15,6 +16,7 @@ from src.pubmed_email_agent.prompts import (
     SUMMARIZE_ARTICLE_USER,
     FORMAT_EMAIL_SYS,
     FORMAT_EMAIL_USER,
+    EXTRACT_ARTICLE_INTENT,
 )
 from src.pubmed_email_agent.logger import get_logger
 
@@ -44,6 +46,8 @@ class LLMTools:
         self.model = model
         self.feedback_base_url = feedback_base_url
         self.unsubscribe_base_url = unsubscribe_base_url
+
+        self.embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
     @traceable(name="generate_search_query")
     async def generate_search_query(
@@ -152,6 +156,37 @@ class LLMTools:
         except Exception as e:
             logger.error(f"Error formatting email for {user_profile.id}: {e}")
             return None
+
+    @traceable(name="extract_article_intent")
+    async def extract_article_intent(
+        self, article_title: str, article_summary: str
+    ) -> str:
+        """get core intent of article as a paragraph"""
+        user_content = f"Title: {article_title}\n\nSummary/Abstract: {article_summary}"
+
+        try:
+            response = await self.client.chat.send_async(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": EXTRACT_ARTICLE_INTENT},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error extracting article intent: {e}")
+            return ""
+
+    def generate_embedding(self, text: str) -> list[float]:
+        """384-dimensional embedding with fastembed"""
+
+        embeddings = list(self.embedding_model.embed([text]))
+
+        if embeddings:
+            return embeddings[0].tolist()
+
+        return []
 
     def _create_rating_links(self, user_id: str, article_id: str) -> str:
         links = [

@@ -1,4 +1,6 @@
 from typing import cast
+import asyncio
+import itertools
 from datetime import datetime, timedelta
 from langgraph.graph import StateGraph, START, END
 
@@ -127,6 +129,35 @@ class Agent:
 
         return {"user_profile": profile}
 
+    async def _process_semantic_search(self, positive_pmids: list[str]) -> list[str]:
+        """helper for hybrid rag semantic search"""
+        if not positive_pmids:
+            return []
+
+        # get articles list
+        articles = await self.pubmed_tools.fetch(positive_pmids)
+
+        # get semantically similar pmids
+        async def _get_semantic_pmids(article_dict):
+            parsed = self.pubmed_tools.parse_article(article_dict)
+            if parsed["title"] and parsed["abstract"]:
+                intent = await self.llm_tools.extract_article_intent(
+                    parsed["title"], parsed["abstract"]
+                )
+                if intent:
+                    embedding = self.llm_tools.generate_embedding(intent)
+                    if embedding:
+                        return await self.user_tools.search_similar_pmids(embedding)
+            return []
+
+        # run semantic search on all articles concurrently and filter out failed runs
+        results = await asyncio.gather(
+            *[_get_semantic_pmids(a) for a in articles], return_exceptions=True
+        )
+        valid_results = [res for res in results if not isinstance(res, Exception)]
+
+        return list(itertools.chain.from_iterable(valid_results))
+
     async def _process_feedback(self, state: AgentState) -> dict:
         logger.info("Processing user feedback")
 
@@ -138,20 +169,23 @@ class Agent:
             return {"article_ids": [], "negative_keywords": []}
 
         positive_pmids = [article.pmid for article in feedback if article.rating >= 4]
-
         negative_pmids = [article.pmid for article in feedback if article.rating <= 2]
 
-        # get related articles for positive feedback
-        related_articles = await self.pubmed_tools.get_related_articles(positive_pmids)
+        # run all sub-processes concurrently
+        related_task, negative_task, semantic_task = await asyncio.gather(
+            self.pubmed_tools.get_related_articles(positive_pmids),
+            self.pubmed_tools.get_article_keywords(negative_pmids),
+            self._process_semantic_search(positive_pmids),
+        )
 
-        # get negative keywords to avoid
-        negative_keywords = await self.pubmed_tools.get_article_keywords(negative_pmids)
+        # merge graph-related and semantic PMIDs
+        final_articles = list(dict.fromkeys(related_task + semantic_task))
 
-        logger.info(f"Found {len(related_articles)} related articles from feedback")
+        logger.info(f"Found {len(final_articles)} related articles from feedback")
 
         return {
-            "article_ids": related_articles,
-            "negative_keywords": negative_keywords,
+            "article_ids": final_articles,
+            "negative_keywords": negative_task,
         }
 
     async def _generate_search_request(self, state: AgentState) -> dict:
@@ -196,8 +230,10 @@ class Agent:
             f"Found {len(search_ids)} articles from search. PubMed Count: {feedback.get('count')}"
         )
 
-        # Get existing article IDs and append new search results
-        article_ids = list(dict.fromkeys(state.get("article_ids", []) + search_ids))[: self.article_count]
+        # only add new search results, maintaining order
+        article_ids = list(dict.fromkeys(state.get("article_ids", []) + search_ids))[
+            : self.article_count
+        ]
 
         logger.info(f"Total unique articles: {len(article_ids)}")
 
@@ -226,6 +262,28 @@ class Agent:
 
         articles = await self.pubmed_tools.fetch(state["article_ids"])
 
+        if articles:
+            # adds article embedding for future semantic searches
+            async def process_article_for_embedding(article):
+                parsed = self.pubmed_tools.parse_article(article)
+                pmid, title, abstract = (
+                    parsed["pmid"],
+                    parsed["title"],
+                    parsed["abstract"],
+                )
+
+                if pmid and title and abstract:
+                    text_to_embed = f"{title} {abstract}"
+                    embedding = self.llm_tools.generate_embedding(text_to_embed)
+                    if embedding:
+                        await self.user_tools.upsert_article_embedding(
+                            pmid, title, abstract, embedding
+                        )
+
+            tasks = [process_article_for_embedding(a) for a in articles if a]
+            for task in tasks:
+                asyncio.create_task(task)
+
         return {"fetched_articles": articles}
 
     async def _summarize_articles(self, state: AgentState) -> dict:
@@ -233,17 +291,12 @@ class Agent:
 
         summaries = []
 
-        articles_data = state["fetched_articles"]
-
-        articles = [articles_data] if isinstance(articles_data, dict) else articles_data
+        articles = state["fetched_articles"]
 
         for article in articles:
-            pmid = article.get("MedlineCitation", {}).get("PMID", "").get("#text", "")
-            title = (
-                article.get("MedlineCitation", {})
-                .get("Article", {})
-                .get("ArticleTitle", "")
-            )
+            parsed = self.pubmed_tools.parse_article(article)
+            pmid = parsed["pmid"]
+            title = parsed["title"]
             link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
             summary_text = await self.llm_tools.summarize_article(article)
 
