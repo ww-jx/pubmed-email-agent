@@ -102,6 +102,48 @@ class PubmedTools:
             logger.error(f"PubMed API Fetch Error: {e}")
             return []
 
+    def parse_article(self, article: dict) -> dict:
+        """parses xmltodict PubMed response into dict"""
+        pmid = article.get("MedlineCitation", {}).get("PMID", {})
+        pmid_str = (
+            pmid.get("#text", "")
+            if isinstance(pmid, dict)
+            else str(pmid)
+            if pmid
+            else ""
+        )
+
+        title = (
+            article.get("MedlineCitation", {})
+            .get("Article", {})
+            .get("ArticleTitle", "")
+        )
+
+        if isinstance(title, dict):
+            title = title.get("#text", "")
+
+        abstract_raw = (
+            article.get("MedlineCitation", {})
+            .get("Article", {})
+            .get("Abstract", {})
+            .get("AbstractText", "")
+        )
+
+        if isinstance(abstract_raw, list):
+            abstract = " ".join(
+                [a.get("#text", "") for a in abstract_raw if isinstance(a, dict)]
+            )
+        elif isinstance(abstract_raw, dict):
+            abstract = abstract_raw.get("#text", "")
+        else:
+            abstract = str(abstract_raw) if abstract_raw else ""
+
+        return {
+            "pmid": pmid_str,
+            "title": str(title) if title else "",
+            "abstract": abstract,
+        }
+
     async def get_related_articles(
         self, pmids: List[str], article_count: int = 2
     ) -> List[str]:
@@ -127,7 +169,7 @@ class PubmedTools:
         try:
             async with self._create_http_client() as client:
                 response = await elink(client, params)
-                data = json.loads(response)
+                data = json.loads(response, strict=False)
         except Exception as e:
             logger.error(f"Error fetching related articles: {e}")
             return []

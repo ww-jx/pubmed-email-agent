@@ -108,3 +108,7 @@ Please create the email using the following information:
     - The unsubscribe link ({unsubscribe_link}.
 
 """
+
+EXTRACT_ARTICLE_INTENT = """
+You are an expert medical AI. Your task is to write a short paragraph detailing of the core medical intent or mechanism of the provided article.
+"""

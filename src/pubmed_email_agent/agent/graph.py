@@ -1,4 +1,5 @@
 from typing import cast
+import asyncio
 from datetime import datetime, timedelta
 from langgraph.graph import StateGraph, START, END
 
@@ -48,6 +49,7 @@ class Agent:
         workflow.add_node("generate_search_request", self._generate_search_request)
         workflow.add_node("search_for_articles", self._search_for_articles)
         workflow.add_node("fetch_article_details", self._fetch_article_details)
+        workflow.add_node("rank_articles", self._rank_articles)
         workflow.add_node("summarize_articles", self._summarize_articles)
         workflow.add_node("format_email", self._format_email)
         workflow.add_node("send_email", self._send_email)
@@ -74,7 +76,8 @@ class Agent:
                 "end": END,
             },
         )
-        workflow.add_edge("fetch_article_details", "summarize_articles")
+        workflow.add_edge("fetch_article_details", "rank_articles")
+        workflow.add_edge("rank_articles", "summarize_articles")
         workflow.add_edge("summarize_articles", "format_email")
         workflow.add_edge("format_email", "send_email")
         workflow.add_edge("send_email", END)
@@ -127,6 +130,28 @@ class Agent:
 
         return {"user_profile": profile}
 
+    async def _extract_feedback_intent(self, positive_pmids: list[str]) -> str:
+        """extract intent from user's positive feedback articles"""
+        if not positive_pmids:
+            return ""
+
+        articles = await self.pubmed_tools.fetch(positive_pmids)
+
+        async def _get_intent(article_dict):
+            parsed = self.pubmed_tools.parse_article(article_dict)
+            if parsed["title"] and parsed["abstract"]:
+                return await self.llm_tools.extract_article_intent(
+                    parsed["title"], parsed["abstract"]
+                )
+            return ""
+
+        intents = await asyncio.gather(
+            *[_get_intent(a) for a in articles], return_exceptions=True
+        )
+        valid_intents = [i for i in intents if not isinstance(i, Exception) and i]
+
+        return " ".join(valid_intents)
+
     async def _process_feedback(self, state: AgentState) -> dict:
         logger.info("Processing user feedback")
 
@@ -138,20 +163,24 @@ class Agent:
             return {"article_ids": [], "negative_keywords": []}
 
         positive_pmids = [article.pmid for article in feedback if article.rating >= 4]
-
         negative_pmids = [article.pmid for article in feedback if article.rating <= 2]
 
-        # get related articles for positive feedback
-        related_articles = await self.pubmed_tools.get_related_articles(positive_pmids)
+        # run all sub-processes concurrently
+        related_task, negative_task, intent_task = await asyncio.gather(
+            self.pubmed_tools.get_related_articles(positive_pmids),
+            self.pubmed_tools.get_article_keywords(negative_pmids),
+            self._extract_feedback_intent(positive_pmids),
+        )
 
-        # get negative keywords to avoid
-        negative_keywords = await self.pubmed_tools.get_article_keywords(negative_pmids)
+        # merge graph-related PMIDs
+        final_articles = list(dict.fromkeys(related_task))
 
-        logger.info(f"Found {len(related_articles)} related articles from feedback")
+        logger.info(f"Found {len(final_articles)} related articles from feedback")
 
         return {
-            "article_ids": related_articles,
-            "negative_keywords": negative_keywords,
+            "article_ids": final_articles,
+            "negative_keywords": negative_task,
+            "feedback_intent": intent_task,
         }
 
     async def _generate_search_request(self, state: AgentState) -> dict:
@@ -165,9 +194,10 @@ class Agent:
 
         search_from_date_str = search_date.strftime("%Y/%m/%d")
 
-        # Calculate how many more articles we need from search
+        # candidate articles for reranking
+        MAX_CANDIDATES = 30
         existing_count = len(state.get("article_ids", []))
-        search_count = max(0, self.article_count - existing_count)
+        search_count = max(0, MAX_CANDIDATES - existing_count)
 
         logger.info(
             f"Requesting {search_count} articles from search (already have {existing_count} articles)"
@@ -196,8 +226,8 @@ class Agent:
             f"Found {len(search_ids)} articles from search. PubMed Count: {feedback.get('count')}"
         )
 
-        # Get existing article IDs and append new search results
-        article_ids = list(dict.fromkeys(state.get("article_ids", []) + search_ids))[: self.article_count]
+        # add new search results while maintaining order
+        article_ids = list(dict.fromkeys(state.get("article_ids", []) + search_ids))
 
         logger.info(f"Total unique articles: {len(article_ids)}")
 
@@ -221,29 +251,92 @@ class Agent:
 
     async def _fetch_article_details(self, state: AgentState) -> dict:
         logger.info(
-            f"Fetching article details for {len(state['article_ids'])} articles"
+            f"Fetching article details for {len(state['article_ids'])} candidate articles"
         )
 
         articles = await self.pubmed_tools.fetch(state["article_ids"])
 
         return {"fetched_articles": articles}
 
+    async def _rank_articles(self, state: AgentState) -> dict:
+        logger.info("Ranking candidate articles")
+
+        articles = state.get("fetched_articles", [])
+        if not articles:
+            return {"article_ids": [], "fetched_articles": []}
+
+        profile = state["user_profile"]
+        feedback_intent = state.get("feedback_intent", "")
+
+        # generate a single target embedding string that combines user profile with intent from recent positive feedback
+        # ensures core interests while slightly weighted toward recent engagement
+        target_string = " ".join(profile.conditions) + " " + feedback_intent
+        target_embedding = self.llm_tools.generate_embedding(target_string)
+
+        if not target_embedding:
+            logger.warning(
+                "Failed to generate target embedding. Falling back to unranked list."
+            )
+
+            top_articles = articles[: self.article_count]
+
+            return {
+                "article_ids": [
+                    self.pubmed_tools.parse_article(a)["pmid"] for a in top_articles
+                ],
+                "fetched_articles": top_articles,
+            }
+
+        scored_articles = []
+
+        for article in articles:
+            parsed = self.pubmed_tools.parse_article(article)
+            pmid, title, abstract = parsed["pmid"], parsed["title"], parsed["abstract"]
+
+            if not pmid or not title or not abstract:
+                continue
+
+            text_to_embed = f"{title} {abstract}"
+            embedding = self.llm_tools.generate_embedding(text_to_embed)
+
+            if not embedding:
+                continue
+
+            score = self.llm_tools.compute_cosine_similarity(
+                target_embedding, embedding
+            )
+            scored_articles.append((score, article, pmid))
+
+            # upsert after calc
+            asyncio.create_task(
+                self.user_tools.upsert_article_embedding(
+                    pmid, title, abstract, embedding
+                )
+            )
+
+        # descending score
+        scored_articles.sort(key=lambda x: x[0], reverse=True)
+
+        top_scored = scored_articles[: self.article_count]
+
+        top_articles = [item[1] for item in top_scored]
+        top_pmids = [item[2] for item in top_scored]
+
+        logger.info(f"Selected top {len(top_articles)} articles after semantic ranking")
+
+        return {"article_ids": top_pmids, "fetched_articles": top_articles}
+
     async def _summarize_articles(self, state: AgentState) -> dict:
         logger.info("Summarizing articles")
 
         summaries = []
 
-        articles_data = state["fetched_articles"]
-
-        articles = [articles_data] if isinstance(articles_data, dict) else articles_data
+        articles = state["fetched_articles"]
 
         for article in articles:
-            pmid = article.get("MedlineCitation", {}).get("PMID", "").get("#text", "")
-            title = (
-                article.get("MedlineCitation", {})
-                .get("Article", {})
-                .get("ArticleTitle", "")
-            )
+            parsed = self.pubmed_tools.parse_article(article)
+            pmid = parsed["pmid"]
+            title = parsed["title"]
             link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
             summary_text = await self.llm_tools.summarize_article(article)
 

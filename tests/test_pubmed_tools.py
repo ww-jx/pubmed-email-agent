@@ -27,7 +27,9 @@ async def test_search_valid_results(pubmed_tools):
         if not article_ids and feedback.get("errorlist", {}).get("network_error"):
             pytest.skip("Search returned empty list. Possible network error.")
 
-        print(json.dumps({"article_ids": article_ids, "feedback": feedback}, indent=2))
+        print(
+            f"[Search API] Found {len(article_ids)} articles. Feedback: {json.dumps(feedback)}"
+        )
 
         assert isinstance(article_ids, list)
         assert len(article_ids) > 0
@@ -42,7 +44,9 @@ async def test_search_no_results(pubmed_tools):
 
     try:
         article_ids, feedback = await pubmed_tools.search(request)
-        print(json.dumps({"article_ids": article_ids, "feedback": feedback}, indent=2))
+        print(
+            f"[Search API No Results] Found {len(article_ids)} articles. ErrorList: {json.dumps(feedback.get('errorlist', {}))}"
+        )
 
         assert isinstance(article_ids, list)
         assert len(article_ids) == 0
@@ -64,7 +68,7 @@ async def test_fetch_valid_structure(pubmed_tools):
         if not results:
             pytest.skip("Fetch returned empty list. Possible network error.")
 
-        print(json.dumps(results, indent=2))
+        print(f"[Fetch API] Successfully fetched details for {len(results)} articles.")
 
         assert isinstance(results, list)
         assert len(results) == 1
@@ -91,7 +95,7 @@ async def test_fetch_invalid_graceful_failure(pubmed_tools):
 
     try:
         results = await pubmed_tools.fetch([fake_pmid])
-        print(json.dumps(results, indent=2))
+        print(f"[Fetch API Graceful] Fetched {len(results)} articles for fake PMID.")
 
         assert isinstance(results, list)
         assert len(results) == 0
@@ -112,7 +116,7 @@ async def test_get_related_articles(pubmed_tools):
         if not results:
             pytest.skip("ELink returned empty list. Possible network error.")
 
-        print(json.dumps(results, indent=2))
+        print(f"[ELink API] Found related PMIDs: {results}")
 
         assert isinstance(results, list)
         assert len(results) > 0, (
@@ -176,7 +180,7 @@ async def test_get_article_keywords(pubmed_tools):
         if not results:
             pytest.skip("Keywords returned empty list. Possible network error.")
 
-        print(json.dumps(results, indent=2))
+        print(f"[Keyword Extraction] Extracted keywords: {results}")
 
         assert isinstance(results, list)
         assert len(results) > 0, (

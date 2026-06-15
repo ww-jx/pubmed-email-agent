@@ -171,3 +171,54 @@ class UserTools:
         except Exception as e:
             logger.error(f"Error fetching feedback for user {user_id}: {e}")
             return []
+
+    async def upsert_article_embedding(
+        self, pmid: str, title: str, abstract: str, embedding: list[float]
+    ):
+        query = text("""
+            INSERT INTO article_embeddings (pmid, title, abstract, embedding)
+            VALUES (:pmid, :title, :abstract, :embedding)
+            ON CONFLICT (pmid) DO UPDATE SET
+                title = EXCLUDED.title,
+                abstract = EXCLUDED.abstract,
+                embedding = EXCLUDED.embedding
+        """)  # database naturally grows more with more users
+        try:
+            async with AsyncSession(self.engine) as session:
+                await session.execute(
+                    query,
+                    {
+                        "pmid": pmid,
+                        "title": title,
+                        "abstract": abstract,
+                        "embedding": str(embedding),
+                    },
+                )
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Error upserting article embedding for PMID {pmid}: {e}")
+
+    async def search_similar_pmids(
+        self, query_embedding: list[float], limit: int = 3
+    ) -> list[str]:
+        """
+        call match_articles RPC function to get related PMIDs
+        in prod, could upload entire pubmed database as embeddings instead of cold start
+        """
+        query = text("""
+            SELECT pmid FROM match_articles(:query_embedding, :match_threshold, :match_count)
+        """)
+        try:
+            async with AsyncSession(self.engine) as session:
+                result = await session.execute(
+                    query,
+                    {
+                        "query_embedding": str(query_embedding),
+                        "match_threshold": 0.0,
+                        "match_count": limit,
+                    },
+                )
+                return [row.pmid for row in result.all()]
+        except Exception as e:
+            logger.error(f"Error searching similar articles: {e}")
+            return []
