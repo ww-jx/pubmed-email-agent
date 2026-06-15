@@ -24,3 +24,4 @@ class AgentState(TypedDict):
     email_content: str
     retries: int
     previous_searches: List[dict]
+    feedback_intent: str

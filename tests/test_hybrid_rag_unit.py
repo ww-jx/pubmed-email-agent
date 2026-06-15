@@ -63,8 +63,7 @@ def agent(mock_user_tools, mock_llm_tools, mock_pubmed_tools):
 
 @pytest.mark.asyncio
 async def test_process_feedback_with_hybrid_rag(agent):
-    """verifies hybrid rag fetches highly-rated articles, embeds intent, and combines vector-search and citation-graph pmids"""
-    # mock user with positive feedback (rating: 5)
+    """verifies feedback node extracts intent and returns citation graph pmids"""
     profile = UserProfile(
         id="u1",
         email="e@e.com",
@@ -73,7 +72,7 @@ async def test_process_feedback_with_hybrid_rag(agent):
         country="C",
         city="D",
         gender="M",
-        conditions=[],
+        conditions=["Cancer"],
         last_email_date=date.today(),
         subscribed=True,
         feedback=[
@@ -84,7 +83,6 @@ async def test_process_feedback_with_hybrid_rag(agent):
     )
     state = AgentState(user_profile=profile)
 
-    # return mock title and abstrac
     agent.pubmed_tools.fetch.return_value = [
         {
             "MedlineCitation": {
@@ -98,50 +96,80 @@ async def test_process_feedback_with_hybrid_rag(agent):
     ]
 
     result = await agent._process_feedback(state)
-    print(
-        f"\n[Hybrid RAG Results] Combined {len(result['article_ids'])} PMIDs: {result['article_ids']}"
-    )
 
     agent.llm_tools.extract_article_intent.assert_called_once_with(
         "Test Title", "Test Abstract"
     )
-    agent.llm_tools.generate_embedding.assert_called_once_with("intent string")
-    agent.user_tools.search_similar_pmids.assert_called_once()
 
     assert "111" in result["article_ids"]
-    assert "999" in result["article_ids"]
+    assert result["feedback_intent"] == "intent string"
 
 
 @pytest.mark.asyncio
-async def test_fetch_article_details_with_embedding(agent):
-    """verifies _fetch_article_details generates embedding and stores in db"""
+async def test_fetch_article_details(agent):
+    """verifies _fetch_article_details just fetches metadata for master list"""
     state = AgentState(article_ids=["456"])
 
-    agent.pubmed_tools.fetch.return_value = [
-        {
-            "MedlineCitation": {
-                "PMID": {"#text": "456"},
-                "Article": {
-                    "ArticleTitle": "Fetch Title",
-                    "Abstract": {"AbstractText": "Fetch Abstract"},
-                },
-            }
-        }
-    ]
+    agent.pubmed_tools.fetch.return_value = [{"fetched": "data"}]
 
     result = await agent._fetch_article_details(state)
-    print(
-        f"\n[Fetch & Embed] Fetched {len(result['fetched_articles'])} articles and dispatched embedding tasks."
+
+    assert len(result["fetched_articles"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_rank_articles(agent):
+    """verifies _rank_articles computes cosine similarity and slices top N"""
+    profile = UserProfile(
+        id="u1",
+        email="e@e.com",
+        first_name="A",
+        last_name="B",
+        country="C",
+        city="D",
+        gender="M",
+        conditions=["Cancer"],
+        last_email_date=date.today(),
+        subscribed=True,
+        feedback=[],
     )
+
+    agent.llm_tools.compute_cosine_similarity = MagicMock(side_effect=[0.5, 0.9])
+
+    state = AgentState(
+        user_profile=profile,
+        feedback_intent="intent string",
+        fetched_articles=[
+            {
+                "MedlineCitation": {
+                    "PMID": {"#text": "111"},
+                    "Article": {
+                        "ArticleTitle": "Bad Title",
+                        "Abstract": {"AbstractText": "Bad"},
+                    },
+                }
+            },
+            {
+                "MedlineCitation": {
+                    "PMID": {"#text": "999"},
+                    "Article": {
+                        "ArticleTitle": "Good Title",
+                        "Abstract": {"AbstractText": "Good"},
+                    },
+                }
+            },
+        ],
+    )
+
+    agent.article_count = 1
+
+    result = await agent._rank_articles(state)
 
     await asyncio.sleep(0.1)
 
-    agent.llm_tools.generate_embedding.assert_called_once_with(
-        "Fetch Title Fetch Abstract"
-    )
+    agent.llm_tools.generate_embedding.assert_any_call("Cancer intent string")
 
-    agent.user_tools.upsert_article_embedding.assert_called_once_with(
-        "456", "Fetch Title", "Fetch Abstract", [0.1] * 384
-    )
+    assert agent.user_tools.upsert_article_embedding.call_count == 2
 
+    assert result["article_ids"] == ["999"]
     assert len(result["fetched_articles"]) == 1

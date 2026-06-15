@@ -2,6 +2,7 @@ from typing import Any, List
 from pydantic import BaseModel, Field
 
 import json
+import math
 from pubmedclient.models import ESearchRequest
 from openrouter import OpenRouter
 from langsmith import traceable
@@ -187,6 +188,20 @@ class LLMTools:
             return embeddings[0].tolist()
 
         return []
+
+    def compute_cosine_similarity(self, vec1, vec2) -> float:
+        """cosine similarity between two vectors."""
+        if len(vec1) != len(vec2):
+            return 0.0
+
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        norm1 = math.sqrt(sum(a * a for a in vec1))
+        norm2 = math.sqrt(sum(b * b for b in vec2))
+
+        if norm1 == 0.0 or norm2 == 0.0:
+            return 0.0
+
+        return dot_product / (norm1 * norm2)
 
     def _create_rating_links(self, user_id: str, article_id: str) -> str:
         links = [

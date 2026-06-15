@@ -15,6 +15,8 @@ def mock_user_tools():
     tools.get_user_feedback = AsyncMock()
     tools.update_last_email_date = AsyncMock()
     tools.send_email = MagicMock(return_value=True)
+    tools.upsert_article_embedding = AsyncMock()
+    tools.search_similar_pmids = AsyncMock(return_value=["999"])
     return tools
 
 
@@ -24,6 +26,9 @@ def mock_llm_tools():
     tools.generate_search_query = AsyncMock()
     tools.summarize_article = AsyncMock()
     tools.format_email = AsyncMock()
+    tools.generate_embedding = MagicMock(return_value=[0.1] * 384)
+    tools.compute_cosine_similarity = MagicMock(return_value=0.9)
+    tools.extract_article_intent = AsyncMock(return_value="intent")
     return tools
 
 
@@ -34,6 +39,12 @@ def mock_pubmed_tools():
     tools.fetch = AsyncMock()
     tools.get_related_articles = AsyncMock()
     tools.get_article_keywords = AsyncMock()
+    
+    def fake_parse_article(article_dict):
+        pmid = article_dict.get("MedlineCitation", {}).get("PMID", {}).get("#text", "")
+        return {"pmid": pmid, "title": "T", "abstract": "A"}
+    tools.parse_article = MagicMock(side_effect=fake_parse_article)
+    
     return tools
 
 
@@ -122,10 +133,10 @@ async def test_full_agent_run_success(agent, sample_user_profile):
     agent.pubmed_tools.fetch.return_value = [
         {
             "MedlineCitation": {
-                "PMID": {"#text": "101"},
-                "Article": {"ArticleTitle": "Test 1"},
+                "PMID": {"#text": pmid},
+                "Article": {"ArticleTitle": "T", "Abstract": {"AbstractText": "A"}},
             }
-        }
+        } for pmid in ["101", "102", "103", "104", "105"]
     ]
 
     agent.llm_tools.summarize_article.return_value = "A concise summary."
@@ -148,7 +159,7 @@ async def test_full_agent_run_success(agent, sample_user_profile):
 
     assert final_state["user_profile"] == sample_user_profile
     assert len(final_state["article_ids"]) == 5
-    assert len(final_state["summaries"]) == 1
+    assert len(final_state["summaries"]) == 5
     assert final_state["email_content"] == "<html>Email Content</html>"
 
     # ensure send_email node triggered side effect
@@ -184,7 +195,14 @@ async def test_agent_retry_loop_behavior(agent, sample_user_profile):
         (["103", "104", "105"], {"count": "3"}),
     ]
 
-    agent.pubmed_tools.fetch.return_value = []
+    agent.pubmed_tools.fetch.return_value = [
+        {
+            "MedlineCitation": {
+                "PMID": {"#text": pmid},
+                "Article": {"ArticleTitle": "T", "Abstract": {"AbstractText": "A"}},
+            }
+        } for pmid in ["101", "102", "103", "104", "105"]
+    ]
     agent.llm_tools.format_email.return_value = "Done"
 
     initial_state = AgentState(user_id="user-123")
