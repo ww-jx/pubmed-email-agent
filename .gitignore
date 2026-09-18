@@ -10,3 +10,6 @@ wheels/
 .langgraph_api/
 # Virtual environments
 .venv
+
+supabase/.branches
+supabase/.temp

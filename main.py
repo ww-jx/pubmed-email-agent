@@ -16,6 +16,7 @@ from src.pubmed_email_agent.config import (
     PUBMED_TOOL_NAME,
     db_connection_string,
     llm,
+    LLM_MODEL,
 )
 from src.pubmed_email_agent.logger import get_logger
 
@@ -26,7 +27,7 @@ async def main():
     user_tools = UserTools(
         db_connection_string, USER_TABLE, FEEDBACK_TABLE, EMAIL_API_KEY, FROM_EMAIL
     )
-    llm_tools = LLMTools(llm, FEEDBACK_BASE_URL, UNSUBSCRIBE_BASE_URL)
+    llm_tools = LLMTools(llm, LLM_MODEL, FEEDBACK_BASE_URL, UNSUBSCRIBE_BASE_URL)
     pubmed_tools = PubmedTools(PUBMED_TOOL_NAME, PUBMED_EMAIL)
 
     agent = Agent(user_tools, llm_tools, pubmed_tools, article_count=5, max_retries=3)
