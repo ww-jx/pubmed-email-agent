@@ -1,25 +1,26 @@
-from typing import Any, List
-from pydantic import BaseModel, Field
-
 import json
 import math
-from pubmedclient.models import ESearchRequest
-from openrouter import OpenRouter
-from langsmith import traceable
+from datetime import date
+from typing import Any
+
 from fastembed import TextEmbedding
+from langsmith import traceable
+from openrouter import OpenRouter
+from pubmedclient.models import ESearchRequest
+from pydantic import BaseModel, Field
 
 from src.pubmed_email_agent.agent.state import Summary
-from src.pubmed_email_agent.tools.user.client import UserProfile
+from src.pubmed_email_agent.logger import get_logger
 from src.pubmed_email_agent.prompts import (
+    EXTRACT_ARTICLE_INTENT,
+    FORMAT_EMAIL_SYS,
+    FORMAT_EMAIL_USER,
     GENERATE_QUERY_SYS,
     GENERATE_QUERY_USER,
     SUMMARIZE_ARTICLE_SYS,
     SUMMARIZE_ARTICLE_USER,
-    FORMAT_EMAIL_SYS,
-    FORMAT_EMAIL_USER,
-    EXTRACT_ARTICLE_INTENT,
 )
-from src.pubmed_email_agent.logger import get_logger
+from src.pubmed_email_agent.tools.user.client import UserProfile
 
 logger = get_logger(__name__)
 
@@ -100,6 +101,8 @@ class LLMTools:
                 term=llm_result.term,
                 retmax=article_count,
                 mindate=search_from_date,
+                maxdate=date.today().strftime("%Y/%m/%d"),
+                datetype="pdat",
                 retmode="json",
             )
 
@@ -128,7 +131,7 @@ class LLMTools:
             return None
 
     @traceable(name="format_email")
-    async def format_email(self, user_profile: UserProfile, summaries: List[Summary]):
+    async def format_email(self, user_profile: UserProfile, summaries: list[Summary]):
         """
         Formats the email content based on the summary
         """
@@ -194,7 +197,7 @@ class LLMTools:
         if len(vec1) != len(vec2):
             return 0.0
 
-        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=True))
         norm1 = math.sqrt(sum(a * a for a in vec1))
         norm2 = math.sqrt(sum(b * b for b in vec2))
 

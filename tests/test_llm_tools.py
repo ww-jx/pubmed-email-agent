@@ -1,5 +1,8 @@
-import pytest
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from src.pubmed_email_agent.tools.llm.client import LLMTools
 from src.pubmed_email_agent.tools.user.client import UserProfile
 
@@ -58,7 +61,10 @@ async def test_generate_search_query_success(llm_tools):
         patch(
             "src.pubmed_email_agent.tools.llm.client.ESearchRequest"
         ) as MockESearchRequest,
+        patch("src.pubmed_email_agent.tools.llm.client.date") as MockDate,
     ):
+        MockDate.today.return_value = date(2024, 6, 15)
+
         mock_llm_result = MagicMock()
         mock_llm_result.term = "diabetes AND treatment"
         MockLLMPubMedQuery.model_validate_json.return_value = mock_llm_result
@@ -74,11 +80,15 @@ async def test_generate_search_query_success(llm_tools):
         assert result == expected_obj
         llm_tools.client.chat.send_async.assert_called_once()
 
+        # mindate alone is ignored by E-utilities; it only filters as a closed
+        # range with maxdate and datetype.
         MockESearchRequest.assert_called_once_with(
             db="pubmed",
             term="diabetes AND treatment",
             retmax=5,
             mindate="2024-01-01",
+            maxdate="2024/06/15",
+            datetype="pdat",
             retmode="json",
         )
 
