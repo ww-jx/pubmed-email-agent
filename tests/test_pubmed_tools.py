@@ -1,11 +1,13 @@
-import pytest
-from unittest.mock import patch
 import json
+from unittest.mock import patch
+
 import httpx
-from pubmedclient.models import ESearchRequest, ELinkRequest, Db, ELinkCmd, RetMode
+import pytest
+from pubmedclient.models import Db, ELinkCmd, ELinkRequest, ESearchRequest, RetMode
+from pubmedclient.sdk import elink, esearch
+
 from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
-from tests.api_models import FetchArticleModel, ESearchResponseModel, ELinkResponseModel
-from pubmedclient.sdk import esearch, elink
+from tests.api_models import ELinkResponseModel, ESearchResponseModel, FetchArticleModel
 
 KNOWN_STABLE_PMID = "23178126"
 
@@ -110,7 +112,7 @@ async def test_get_related_articles(pubmed_tools):
     """Test Neighbor Score ELink returns results for a known PMID"""
     try:
         results = await pubmed_tools.get_related_articles(
-            [KNOWN_STABLE_PMID], article_count=5
+            [KNOWN_STABLE_PMID], ("2000/01/01", "2030/01/01"), article_count=5
         )
 
         if not results:

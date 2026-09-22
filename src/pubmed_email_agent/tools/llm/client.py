@@ -1,6 +1,5 @@
 import json
 import math
-from datetime import date
 from typing import Any
 
 from fastembed import TextEmbedding
@@ -56,13 +55,15 @@ class LLMTools:
         self,
         interests: list[str],
         negative_keywords: list[str],
-        search_from_date: str,
+        search_window: tuple[str, str],
         article_count: int = 5,
-        previous_searches: list[dict] = None,
+        previous_searches: list[dict] | None = None,
     ) -> ESearchRequest | None:
         """
         Generates PubMed search parameters
         """
+        search_from_date, search_to_date = search_window
+
         user_content = GENERATE_QUERY_USER.format(
             interests=", ".join(interests),
             negative_keywords=negative_keywords,
@@ -101,8 +102,8 @@ class LLMTools:
                 term=llm_result.term,
                 retmax=article_count,
                 mindate=search_from_date,
-                maxdate=date.today().strftime("%Y/%m/%d"),
-                datetype="pdat",
+                maxdate=search_to_date,
+                datetype="edat",  # date pubmed indexed the entry
                 retmode="json",
             )
 

@@ -1,11 +1,13 @@
+import json
 import os
 import re
-import json
-import pytest
+
 import httpx
+import pytest
 from dotenv import load_dotenv
 from openrouter import OpenRouter
 from pubmedclient.models import ESearchRequest
+
 from src.pubmed_email_agent.tools.llm.client import LLMTools
 
 load_dotenv()
@@ -59,7 +61,7 @@ async def test_pubmed_query_generation_eval(model_name, case):
         request_obj = await llm_tools.generate_search_query(
             interests=case["interests"],
             negative_keywords=case["negative_keywords"],
-            search_from_date="2025/01/01",
+            search_window=("2025/01/01", "2025/12/31"),
             article_count=5,
         )
 
@@ -161,7 +163,7 @@ async def test_agentic_reflection_query_refinement():
         request_obj = await llm_tools.generate_search_query(
             interests=["SuperFakeDisease", "Treatment"],
             negative_keywords=[],
-            search_from_date="2024/01/01",
+            search_window=("2024/01/01", "2024/12/31"),
             article_count=5,
             previous_searches=mock_previous_searches,
         )

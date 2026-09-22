@@ -1,17 +1,21 @@
-from typing import cast
 import asyncio
 from datetime import datetime, timedelta
-from langgraph.graph import StateGraph, START, END
+from typing import cast
 
-from src.pubmed_email_agent.agent.state import Summary
-from src.pubmed_email_agent.agent.state import AgentState
+from langgraph.graph import END, START, StateGraph
 
-from src.pubmed_email_agent.tools.llm.client import LLMTools
-from src.pubmed_email_agent.tools.user.client import UserTools
-from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
+from src.pubmed_email_agent.agent.state import AgentState, Summary
 from src.pubmed_email_agent.logger import get_logger
+from src.pubmed_email_agent.tools.llm.client import LLMTools
+from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
+from src.pubmed_email_agent.tools.user.client import UserTools
 
 logger = get_logger(__name__)
+
+PUBMED_DATE_FORMAT = "%Y/%m/%d"
+
+# How far back to look for a user who has never been emailed.
+FIRST_RUN_LOOKBACK_DAYS = 7
 
 
 class Agent:
@@ -128,7 +132,18 @@ class Agent:
 
         profile.feedback = user_feedback
 
-        return {"user_profile": profile}
+        if profile.last_email_date is None:
+            search_from = datetime.now().date() - timedelta(
+                days=FIRST_RUN_LOOKBACK_DAYS
+            )
+        else:
+            search_from = profile.last_email_date + timedelta(days=1)
+
+        return {
+            "user_profile": profile,
+            "search_from_date": search_from.strftime(PUBMED_DATE_FORMAT),
+            "search_to_date": datetime.now().date().strftime(PUBMED_DATE_FORMAT),
+        }
 
     async def _extract_feedback_intent(self, positive_pmids: list[str]) -> str:
         """extract intent from user's positive feedback articles"""
@@ -165,9 +180,11 @@ class Agent:
         positive_pmids = [article.pmid for article in feedback if article.rating >= 4]
         negative_pmids = [article.pmid for article in feedback if article.rating <= 2]
 
+        search_window = (state["search_from_date"], state["search_to_date"])
+
         # run all sub-processes concurrently
         related_task, negative_task, intent_task = await asyncio.gather(
-            self.pubmed_tools.get_related_articles(positive_pmids),
+            self.pubmed_tools.get_related_articles(positive_pmids, search_window),
             self.pubmed_tools.get_article_keywords(negative_pmids),
             self._extract_feedback_intent(positive_pmids),
         )
@@ -187,12 +204,7 @@ class Agent:
         logger.info("Generating search request")
 
         profile = state["user_profile"]
-        if profile.last_email_date is None:
-            search_date = datetime.now().date() - timedelta(days=7)
-        else:
-            search_date = profile.last_email_date + timedelta(days=1)
-
-        search_from_date_str = search_date.strftime("%Y/%m/%d")
+        search_window = (state["search_from_date"], state["search_to_date"])
 
         # candidate articles for reranking
         MAX_CANDIDATES = 30
@@ -208,7 +220,7 @@ class Agent:
         search_req = await self.llm_tools.generate_search_query(
             profile.conditions,
             state["negative_keywords"],
-            search_from_date_str,
+            search_window,
             search_count,
             previous_searches,
         )
@@ -379,7 +391,8 @@ class Agent:
             )
             if not update_success:
                 logger.error(
-                    f"Failed to update last email date for user {user_profile.id}"
+                    f"Failed to update last_email_date for user {user_profile.id}; "
+                    "next run will repeat this digest"
                 )
         else:
             logger.error(f"Failed to send email to {user_profile.id}")

@@ -1,4 +1,3 @@
-from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -61,10 +60,7 @@ async def test_generate_search_query_success(llm_tools):
         patch(
             "src.pubmed_email_agent.tools.llm.client.ESearchRequest"
         ) as MockESearchRequest,
-        patch("src.pubmed_email_agent.tools.llm.client.date") as MockDate,
     ):
-        MockDate.today.return_value = date(2024, 6, 15)
-
         mock_llm_result = MagicMock()
         mock_llm_result.term = "diabetes AND treatment"
         MockLLMPubMedQuery.model_validate_json.return_value = mock_llm_result
@@ -74,7 +70,7 @@ async def test_generate_search_query_success(llm_tools):
         MockESearchRequest.return_value = expected_obj
 
         result = await llm_tools.generate_search_query(
-            ["diabetes"], ["diet"], "2024-01-01", 5
+            ["diabetes"], ["diet"], ("2024/01/01", "2024/06/15"), 5
         )
 
         assert result == expected_obj
@@ -86,9 +82,9 @@ async def test_generate_search_query_success(llm_tools):
             db="pubmed",
             term="diabetes AND treatment",
             retmax=5,
-            mindate="2024-01-01",
+            mindate="2024/01/01",
             maxdate="2024/06/15",
-            datetype="pdat",
+            datetype="edat",
             retmode="json",
         )
 
@@ -128,7 +124,9 @@ async def test_generate_search_query_api_error(llm_tools, caplog):
         "OpenRouter Rate Limit Exceeded"
     )
 
-    result = await llm_tools.generate_search_query(["diabetes"], [], "2024-01-01", 5)
+    result = await llm_tools.generate_search_query(
+        ["diabetes"], [], ("2024/01/01", "2024/06/15"), 5
+    )
 
     assert result is None
     assert "Error generating PubMed query" in caplog.text
@@ -142,7 +140,9 @@ async def test_generate_search_query_invalid_json(llm_tools, caplog):
     mock_response.choices = [MagicMock(message=MagicMock(content=bad_json))]
     llm_tools.client.chat.send_async.return_value = mock_response
 
-    result = await llm_tools.generate_search_query(["diabetes"], [], "2024-01-01", 5)
+    result = await llm_tools.generate_search_query(
+        ["diabetes"], [], ("2024/01/01", "2024/06/15"), 5
+    )
 
     assert result is None
     assert "Error generating PubMed query" in caplog.text

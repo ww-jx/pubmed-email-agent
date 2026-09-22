@@ -1,11 +1,12 @@
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
 from datetime import date
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.pubmed_email_agent.agent.graph import Agent
 from src.pubmed_email_agent.agent.state import AgentState
-from src.pubmed_email_agent.tools.user.client import UserProfile, UserFeedback
+from src.pubmed_email_agent.tools.user.client import UserFeedback, UserProfile
 
 
 @pytest.fixture
@@ -81,7 +82,11 @@ async def test_process_feedback_with_hybrid_rag(agent):
             )
         ],
     )
-    state = AgentState(user_profile=profile)
+    state = AgentState(
+        user_profile=profile,
+        search_from_date="2026/08/20",
+        search_to_date="2026/09/20",
+    )
 
     agent.pubmed_tools.fetch.return_value = [
         {
