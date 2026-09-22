@@ -1,5 +1,5 @@
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -195,3 +195,65 @@ async def test_search_network_error(pubmed_tools):
         assert feedback.get("errorlist") is not None
         assert "network_error" in feedback["errorlist"]
         assert "Mocked network error" in feedback["errorlist"]["network_error"]
+
+
+@pytest.mark.asyncio
+async def test_get_related_articles_ranks_by_score(pubmed_tools):
+    payload = {
+        "linksets": [
+            {
+                "dbfrom": "pubmed",
+                "ids": ["111"],
+                "linksetdbs": [
+                    {
+                        "linkname": "pubmed_pubmed",
+                        "links": [
+                            {"id": "900", "score": 10},
+                            {"id": "800", "score": 40},
+                        ],
+                    },
+                    {
+                        "linkname": "pubmed_pubmed_citedin",
+                        "links": [{"id": "700", "score": 99}],
+                    },
+                ],
+            },
+            {
+                "dbfrom": "pubmed",
+                "ids": ["222"],
+                "linksetdbs": [
+                    {
+                        "linkname": "pubmed_pubmed",
+                        "links": [
+                            {"id": "800", "score": 90},
+                            {"id": "950", "score": 50},
+                        ],
+                    }
+                ],
+            },
+        ]
+    }
+
+    with patch(
+        "src.pubmed_email_agent.tools.pubmed.client.elink",
+        new=AsyncMock(return_value=json.dumps(payload)),
+    ):
+        results = await pubmed_tools.get_related_articles(
+            ["111", "222"], ("2026/08/20", "2026/09/20"), article_count=3
+        )
+
+    assert results == ["800", "950", "900"]
+
+
+@pytest.mark.asyncio
+async def test_get_related_articles_sends_both_date_bounds(pubmed_tools):
+    """E-utilities ignores a lone mindate, so the window must travel whole."""
+    mock_elink = AsyncMock(return_value=json.dumps({"linksets": []}))
+
+    with patch("src.pubmed_email_agent.tools.pubmed.client.elink", new=mock_elink):
+        await pubmed_tools.get_related_articles(["111"], ("2026/08/20", "2026/09/20"))
+
+    sent = mock_elink.await_args.args[1]
+    assert sent.mindate == "2026/08/20"
+    assert sent.maxdate == "2026/09/20"
+    assert sent.datetype == "edat"
