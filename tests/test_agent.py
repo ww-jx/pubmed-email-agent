@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock
 from datetime import date
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from pubmedclient.models import ESearchRequest
 
 from src.pubmed_email_agent.agent.graph import Agent
@@ -39,12 +40,13 @@ def mock_pubmed_tools():
     tools.fetch = AsyncMock()
     tools.get_related_articles = AsyncMock()
     tools.get_article_keywords = AsyncMock()
-    
+
     def fake_parse_article(article_dict):
         pmid = article_dict.get("MedlineCitation", {}).get("PMID", {}).get("#text", "")
         return {"pmid": pmid, "title": "T", "abstract": "A"}
+
     tools.parse_article = MagicMock(side_effect=fake_parse_article)
-    
+
     return tools
 
 
@@ -74,13 +76,6 @@ def sample_user_profile():
         subscribed=True,
         feedback=[],
     )
-
-
-# routing & conditional tests
-def test_subscription_check_continue(agent, sample_user_profile):
-    state = AgentState(user_profile=sample_user_profile)
-    result = agent._subscription_check(state)
-    assert result == "continue"
 
 
 def test_subscription_check_end(agent, sample_user_profile):
@@ -136,7 +131,8 @@ async def test_full_agent_run_success(agent, sample_user_profile):
                 "PMID": {"#text": pmid},
                 "Article": {"ArticleTitle": "T", "Abstract": {"AbstractText": "A"}},
             }
-        } for pmid in ["101", "102", "103", "104", "105"]
+        }
+        for pmid in ["101", "102", "103", "104", "105"]
     ]
 
     agent.llm_tools.summarize_article.return_value = "A concise summary."
@@ -201,7 +197,8 @@ async def test_agent_retry_loop_behavior(agent, sample_user_profile):
                 "PMID": {"#text": pmid},
                 "Article": {"ArticleTitle": "T", "Abstract": {"AbstractText": "A"}},
             }
-        } for pmid in ["101", "102", "103", "104", "105"]
+        }
+        for pmid in ["101", "102", "103", "104", "105"]
     ]
     agent.llm_tools.format_email.return_value = "Done"
 

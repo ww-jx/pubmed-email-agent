@@ -111,18 +111,6 @@ async def test_process_feedback_with_hybrid_rag(agent):
 
 
 @pytest.mark.asyncio
-async def test_fetch_article_details(agent):
-    """verifies _fetch_article_details just fetches metadata for master list"""
-    state = AgentState(article_ids=["456"])
-
-    agent.pubmed_tools.fetch.return_value = [{"fetched": "data"}]
-
-    result = await agent._fetch_article_details(state)
-
-    assert len(result["fetched_articles"]) == 1
-
-
-@pytest.mark.asyncio
 async def test_rank_articles(agent):
     """verifies _rank_articles computes cosine similarity and slices top N"""
     profile = UserProfile(

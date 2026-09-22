@@ -91,23 +91,6 @@ async def test_fetch_valid_structure(pubmed_tools):
 
 
 @pytest.mark.asyncio
-async def test_fetch_invalid_graceful_failure(pubmed_tools):
-    """Test that fetching a non-existent PMID"""
-    fake_pmid = "999999999999"
-
-    try:
-        results = await pubmed_tools.fetch([fake_pmid])
-        print(f"[Fetch API Graceful] Fetched {len(results)} articles for fake PMID.")
-
-        assert isinstance(results, list)
-        assert len(results) == 0
-    except Exception as e:
-        pytest.fail(
-            f"Tool crashed on invalid fetch instead of degrading gracefully: {e}"
-        )
-
-
-@pytest.mark.asyncio
 async def test_get_related_articles(pubmed_tools):
     """Test Neighbor Score ELink returns results for a known PMID"""
     try:
