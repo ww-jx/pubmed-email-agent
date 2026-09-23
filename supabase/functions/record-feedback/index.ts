@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { confirmPage, escapeHtml, verifySignedParams } from '../_shared/signed-link.ts'
+import { verifySignedParams } from '../_shared/signed-link.ts'
 
 Deno.serve(async (req) => {
   const supabaseAdmin = createClient(
@@ -22,14 +22,6 @@ Deno.serve(async (req) => {
     const ratingValue = parseInt(rating, 10)
     if (!(ratingValue >= 1 && ratingValue <= 5)) {
       throw new Error("Invalid rating.")
-    }
-
-    if (req.method !== 'POST') {
-      return confirmPage(
-        `Rate this article ${escapeHtml(rating)} out of 5`,
-        'Confirm to record your rating. It helps us choose what to send you next.',
-        url.toString(),
-      )
     }
 
     const { error } = await supabaseAdmin

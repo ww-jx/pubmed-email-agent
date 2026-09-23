@@ -3,14 +3,14 @@ import asyncio
 from src.pubmed_email_agent.agent.graph import Agent
 from src.pubmed_email_agent.config import (
     EMAIL_API_KEY,
-    FEEDBACK_BASE_URL,
+    FEEDBACK_FUNCTION_URL,
     FEEDBACK_TABLE,
     FROM_EMAIL,
     LINK_SIGNING_SECRET,
     LLM_MODEL,
     PUBMED_EMAIL,
     PUBMED_TOOL_NAME,
-    UNSUBSCRIBE_BASE_URL,
+    UNSUBSCRIBE_FUNCTION_URL,
     USER_TABLE,
     db_connection_string,
     llm,
@@ -30,8 +30,8 @@ async def main():
     llm_tools = LLMTools(
         client=llm,
         model=LLM_MODEL,
-        feedback_base_url=FEEDBACK_BASE_URL,
-        unsubscribe_base_url=UNSUBSCRIBE_BASE_URL,
+        feedback_function_url=FEEDBACK_FUNCTION_URL,
+        unsubscribe_function_url=UNSUBSCRIBE_FUNCTION_URL,
         link_signing_secret=LINK_SIGNING_SECRET,
     )
     pubmed_tools = PubmedTools(PUBMED_TOOL_NAME, PUBMED_EMAIL)

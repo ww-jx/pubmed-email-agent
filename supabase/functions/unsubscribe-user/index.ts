@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { confirmPage, verifySignedParams } from '../_shared/signed-link.ts';
+import { verifySignedParams } from '../_shared/signed-link.ts';
 
 Deno.serve(async (req) => {
   const supabaseAdmin = createClient(
@@ -16,14 +16,6 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
 
     const { user_id } = await verifySignedParams(url, secret, ['user_id']);
-
-    if (req.method !== 'POST') {
-      return confirmPage(
-        'Unsubscribe from the PubMed digest',
-        'Confirm to stop receiving the digest. You can sign up again at any time.',
-        url.toString(),
-      );
-    }
 
     const { error } = await supabaseAdmin
       .from('users')

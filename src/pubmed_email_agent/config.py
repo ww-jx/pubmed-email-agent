@@ -13,8 +13,13 @@ DB_NAME = os.getenv("DB_NAME")
 USER_TABLE = os.getenv("USER_TABLE", "")
 FEEDBACK_TABLE = os.getenv("FEEDBACK_TABLE", "")
 
-FEEDBACK_BASE_URL = os.getenv("FEEDBACK_BASE_URL", "")
-UNSUBSCRIBE_BASE_URL = os.getenv("UNSUBSCRIBE_BASE_URL", "")
+# Two different URLs, and mixing them up sends readers to a dead route.
+# *_FUNCTION_URL is where an emailed link points -- the edge function, which
+# verifies the signature and does the work. *_BASE_URL is read by those
+# functions to build the /success and /error pages they redirect to, and is
+# not used by this process.
+FEEDBACK_FUNCTION_URL = os.getenv("FEEDBACK_FUNCTION_URL", "")
+UNSUBSCRIBE_FUNCTION_URL = os.getenv("UNSUBSCRIBE_FUNCTION_URL", "")
 LINK_SIGNING_SECRET = os.getenv("LINK_SIGNING_SECRET", "")
 
 LLM_API_KEY = os.getenv("OPENROUTER_API_KEY")

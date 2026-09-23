@@ -46,8 +46,8 @@ class LLMTools:
         self,
         client: OpenRouter,
         model: str,
-        feedback_base_url: str,
-        unsubscribe_base_url: str,
+        feedback_function_url: str,
+        unsubscribe_function_url: str,
         link_signing_secret: str,
     ):
         if not link_signing_secret:
@@ -58,8 +58,8 @@ class LLMTools:
 
         self.client = client
         self.model = model
-        self.feedback_base_url = feedback_base_url
-        self.unsubscribe_base_url = unsubscribe_base_url
+        self.feedback_function_url = feedback_function_url
+        self.unsubscribe_function_url = unsubscribe_function_url
         self.link_signing_secret = link_signing_secret
 
         self.embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
@@ -242,7 +242,7 @@ class LLMTools:
 
     def _create_rating_links(self, user_id: str, article_id: str) -> str:
         links = [
-            f'<a href="{self._signed_link(self.feedback_base_url, {"user_id": user_id, "pmid": article_id, "rating": str(i)})}" '
+            f'<a href="{self._signed_link(self.feedback_function_url, {"user_id": user_id, "pmid": article_id, "rating": str(i)})}" '
             f'style="text-decoration: none; margin: 0 5px; font-size: 1.2em; color: #007bff;">{i}</a>'
             for i in range(1, 6)
         ]
@@ -252,5 +252,5 @@ class LLMTools:
         return f"<b>How relevant was this?</b><br>{html_string}<br><small>(1=Not Relevant, 5=Very Relevant)</small>"
 
     def _create_unsubscribe_link(self, user_id: str) -> str:
-        url = self._signed_link(self.unsubscribe_base_url, {"user_id": user_id})
+        url = self._signed_link(self.unsubscribe_function_url, {"user_id": user_id})
         return f'<a href="{url}">Unsubscribe</a>'

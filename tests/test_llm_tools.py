@@ -21,8 +21,8 @@ def llm_tools(mock_openrouter):
     return LLMTools(
         client=mock_openrouter,
         model="test-model",
-        feedback_base_url="https://test.com/feedback",
-        unsubscribe_base_url="https://test.com/unsubscribe",
+        feedback_function_url="https://test.com/feedback",
+        unsubscribe_function_url="https://test.com/unsubscribe",
         link_signing_secret="test-signing-secret",
     )
 
@@ -151,7 +151,7 @@ def test_empty_signing_secret_is_refused(mock_openrouter):
         LLMTools(
             client=mock_openrouter,
             model="test-model",
-            feedback_base_url="https://test.com/feedback",
-            unsubscribe_base_url="https://test.com/unsubscribe",
+            feedback_function_url="https://test.com/feedback",
+            unsubscribe_function_url="https://test.com/unsubscribe",
             link_signing_secret="",
         )
