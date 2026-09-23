@@ -17,6 +17,7 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       FEEDBACK_BASE_URL: ${{ secrets.FEEDBACK_BASE_URL }}
       UNSUBSCRIBE_BASE_URL: ${{ secrets.UNSUBSCRIBE_BASE_URL }}
+      LINK_SIGNING_SECRET: ${{ secrets.LINK_SIGNING_SECRET }}
 
     steps:
       - name: Checkout Code
@@ -30,8 +31,9 @@ jobs:
       - name: Set All Function Secrets
         run: |
           supabase secrets set --project-ref $SUPABASE_PROJECT_REF \
-            FEEDBACK_BASE_URL=$FEEDBACK_BASE_URL \
-            UNSUBSCRIBE_BASE_URL=$UNSUBSCRIBE_BASE_URL
+            FEEDBACK_BASE_URL="$FEEDBACK_BASE_URL" \
+            UNSUBSCRIBE_BASE_URL="$UNSUBSCRIBE_BASE_URL" \
+            LINK_SIGNING_SECRET="$LINK_SIGNING_SECRET"
 
       - name: Deploy 'record-feedback' Function
         run: supabase functions deploy record-feedback --project-ref $SUPABASE_PROJECT_REF --no-verify-jwt

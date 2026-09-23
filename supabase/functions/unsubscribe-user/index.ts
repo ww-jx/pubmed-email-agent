@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { confirmPage, verifySignedParams } from '../_shared/signed-link.ts';
 
 Deno.serve(async (req) => {
   const supabaseAdmin = createClient(
@@ -9,19 +10,25 @@ Deno.serve(async (req) => {
   const baseUrl = Deno.env.get('UNSUBSCRIBE_BASE_URL')!;
   const successUrl = `${baseUrl.replace(/\/+$/, '')}/success`;
   const errorUrl = `${baseUrl.replace(/\/+$/, '')}/error`;
+  const secret = Deno.env.get('LINK_SIGNING_SECRET')!;
 
   try {
     const url = new URL(req.url);
-    const userId = url.searchParams.get('user_id');
 
-    if (!userId) {
-      throw new Error("User ID is required.");
+    const { user_id } = await verifySignedParams(url, secret, ['user_id']);
+
+    if (req.method !== 'POST') {
+      return confirmPage(
+        'Unsubscribe from the PubMed digest',
+        'Confirm to stop receiving the digest. You can sign up again at any time.',
+        url.toString(),
+      );
     }
 
     const { error } = await supabaseAdmin
       .from('users')
       .update({ subscribed: false })
-      .eq('id', userId);
+      .eq('id', user_id);
 
     if (error) throw error;
 

@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 from openrouter import OpenRouter
 
@@ -14,6 +15,7 @@ FEEDBACK_TABLE = os.getenv("FEEDBACK_TABLE", "")
 
 FEEDBACK_BASE_URL = os.getenv("FEEDBACK_BASE_URL", "")
 UNSUBSCRIBE_BASE_URL = os.getenv("UNSUBSCRIBE_BASE_URL", "")
+LINK_SIGNING_SECRET = os.getenv("LINK_SIGNING_SECRET", "")
 
 LLM_API_KEY = os.getenv("OPENROUTER_API_KEY")
 LLM_MODEL = os.getenv("OPENROUTER_MODEL", "")

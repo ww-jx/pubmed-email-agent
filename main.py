@@ -1,24 +1,24 @@
 import asyncio
 
 from src.pubmed_email_agent.agent.graph import Agent
-from src.pubmed_email_agent.tools.llm.client import LLMTools
-from src.pubmed_email_agent.tools.user.client import UserTools
-from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
-
 from src.pubmed_email_agent.config import (
-    USER_TABLE,
-    FEEDBACK_TABLE,
-    FEEDBACK_BASE_URL,
-    UNSUBSCRIBE_BASE_URL,
     EMAIL_API_KEY,
+    FEEDBACK_BASE_URL,
+    FEEDBACK_TABLE,
     FROM_EMAIL,
+    LINK_SIGNING_SECRET,
+    LLM_MODEL,
     PUBMED_EMAIL,
     PUBMED_TOOL_NAME,
+    UNSUBSCRIBE_BASE_URL,
+    USER_TABLE,
     db_connection_string,
     llm,
-    LLM_MODEL,
 )
 from src.pubmed_email_agent.logger import get_logger
+from src.pubmed_email_agent.tools.llm.client import LLMTools
+from src.pubmed_email_agent.tools.pubmed.client import PubmedTools
+from src.pubmed_email_agent.tools.user.client import UserTools
 
 logger = get_logger(__name__)
 
@@ -27,7 +27,13 @@ async def main():
     user_tools = UserTools(
         db_connection_string, USER_TABLE, FEEDBACK_TABLE, EMAIL_API_KEY, FROM_EMAIL
     )
-    llm_tools = LLMTools(llm, LLM_MODEL, FEEDBACK_BASE_URL, UNSUBSCRIBE_BASE_URL)
+    llm_tools = LLMTools(
+        client=llm,
+        model=LLM_MODEL,
+        feedback_base_url=FEEDBACK_BASE_URL,
+        unsubscribe_base_url=UNSUBSCRIBE_BASE_URL,
+        link_signing_secret=LINK_SIGNING_SECRET,
+    )
     pubmed_tools = PubmedTools(PUBMED_TOOL_NAME, PUBMED_EMAIL)
 
     agent = Agent(user_tools, llm_tools, pubmed_tools, article_count=5, max_retries=3)

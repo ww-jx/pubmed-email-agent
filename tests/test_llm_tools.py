@@ -1,4 +1,7 @@
+import re
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qsl, urlparse
 
 import pytest
 
@@ -20,6 +23,7 @@ def llm_tools(mock_openrouter):
         model="test-model",
         feedback_base_url="https://test.com/feedback",
         unsubscribe_base_url="https://test.com/unsubscribe",
+        link_signing_secret="test-signing-secret",
     )
 
 
@@ -87,6 +91,12 @@ async def test_generate_search_query_invalid_json(llm_tools, caplog):
     assert "Error generating PubMed query" in caplog.text
 
 
+def _query(html: str) -> dict[str, str]:
+    """The query parameters of the first href in a fragment."""
+    href = re.search(r'href="([^"]+)"', html).group(1)
+    return dict(parse_qsl(urlparse(href).query))
+
+
 def test_create_rating_links(llm_tools):
     html = llm_tools._create_rating_links("user-123", "paper-456")
 
@@ -103,3 +113,45 @@ def test_create_unsubscribe_link(llm_tools):
     assert "https://test.com/unsubscribe" in html
     assert "user_id=user-123" in html
     assert ">Unsubscribe<" in html
+
+
+def test_signed_links_reject_tampering(llm_tools):
+    """
+    The token must cover every parameter, not just the user id.
+
+    An unsigned link let anyone unsubscribe a reader or file ratings in their
+    name, so this pins that changing any signed value invalidates the token --
+    the same check the edge functions run in
+    supabase/functions/_shared/signed-link.ts.
+    """
+    params = _query(llm_tools._create_rating_links("user-123", "paper-456"))
+    token = params.pop("token")
+
+    assert llm_tools._sign(params) == token
+
+    for key, tampered in [
+        ("user_id", "someone-else"),
+        ("pmid", "999"),
+        ("rating", "5"),
+        ("exp", str(int(params["exp"]) + 86400)),
+    ]:
+        assert llm_tools._sign(params | {key: tampered}) != token
+
+
+def test_links_carry_an_expiry(llm_tools):
+    """A link leaked from a forwarded email has to stop working eventually."""
+    issued = _query(llm_tools._create_unsubscribe_link("user-123"))
+
+    assert int(issued["exp"]) > time.time()
+
+
+def test_empty_signing_secret_is_refused(mock_openrouter):
+    """An empty HMAC key still produces a token, so it has to fail loudly."""
+    with pytest.raises(ValueError, match="link_signing_secret is empty"):
+        LLMTools(
+            client=mock_openrouter,
+            model="test-model",
+            feedback_base_url="https://test.com/feedback",
+            unsubscribe_base_url="https://test.com/unsubscribe",
+            link_signing_secret="",
+        )

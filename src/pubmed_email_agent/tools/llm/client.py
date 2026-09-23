@@ -1,6 +1,10 @@
+import hashlib
+import hmac
 import json
 import math
+import time
 from typing import Any
+from urllib.parse import urlencode
 
 from fastembed import TextEmbedding
 from langsmith import traceable
@@ -23,6 +27,8 @@ from src.pubmed_email_agent.tools.user.client import UserProfile
 
 logger = get_logger(__name__)
 
+LINK_TTL_SECONDS = 60 * 24 * 60 * 60
+
 
 class LLMPubMedQuery(BaseModel):
     term: str = Field(
@@ -42,11 +48,19 @@ class LLMTools:
         model: str,
         feedback_base_url: str,
         unsubscribe_base_url: str,
+        link_signing_secret: str,
     ):
+        if not link_signing_secret:
+            raise ValueError(
+                "link_signing_secret is empty; an empty key signs nothing and "
+                "leaves the feedback and unsubscribe links forgeable"
+            )
+
         self.client = client
         self.model = model
         self.feedback_base_url = feedback_base_url
         self.unsubscribe_base_url = unsubscribe_base_url
+        self.link_signing_secret = link_signing_secret
 
         self.embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
@@ -207,9 +221,28 @@ class LLMTools:
 
         return dot_product / (norm1 * norm2)
 
+    def _sign(self, params: dict[str, str]) -> str:
+        """
+        HMAC-SHA256 over the parameters in lowercase hex
+        """
+        canonical = "&".join(f"{key}={params[key]}" for key in sorted(params))
+
+        return hmac.new(
+            self.link_signing_secret.encode(),
+            canonical.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def _signed_link(self, base_url: str, params: dict[str, str]) -> str:
+        """A link with expiry and signature"""
+        params = params | {"exp": str(int(time.time()) + LINK_TTL_SECONDS)}
+        query = urlencode(params | {"token": self._sign(params)})
+
+        return f"{base_url}?{query}"
+
     def _create_rating_links(self, user_id: str, article_id: str) -> str:
         links = [
-            f'<a href="{self.feedback_base_url}?user_id={user_id}&pmid={article_id}&rating={i}" '
+            f'<a href="{self._signed_link(self.feedback_base_url, {"user_id": user_id, "pmid": article_id, "rating": str(i)})}" '
             f'style="text-decoration: none; margin: 0 5px; font-size: 1.2em; color: #007bff;">{i}</a>'
             for i in range(1, 6)
         ]
@@ -219,5 +252,5 @@ class LLMTools:
         return f"<b>How relevant was this?</b><br>{html_string}<br><small>(1=Not Relevant, 5=Very Relevant)</small>"
 
     def _create_unsubscribe_link(self, user_id: str) -> str:
-        url = f"{self.unsubscribe_base_url}?user_id={user_id}"
+        url = self._signed_link(self.unsubscribe_base_url, {"user_id": user_id})
         return f'<a href="{url}">Unsubscribe</a>'
